@@ -16,12 +16,23 @@ class BaseConfig:
 
     DATABASE_URL: str = os.environ.get("DATABASE_URL")
     DATABASE_CONNECT_DICT: dict = {}
+
+    # JWT Configuration
+    SECRET_KEY: str = os.environ.get(
+        "SECRET_KEY",
+        "your-secret-key-change-this-in-production-make-it-long-and-random",
+    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
+        os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
+    )  # 24 hours
+
+    # Celery Configuration
     CELERY_BROKER_URL: str = os.environ.get(
         "CELERY_BROKER_URL", "redis://127.0.0.1:6379/0"
-    )  # NEW
+    )
     CELERY_RESULT_BACKEND: str = os.environ.get(
         "CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/0"
-    )  # NEW
+    )
     CELERY_TASK_ALWAYS_EAGER: bool = False
     WS_MESSAGE_QUEUE: str = os.environ.get(
         "WS_MESSAGE_QUEUE", "redis://127.0.0.1:6379/0"
@@ -57,13 +68,16 @@ class DevelopmentConfig(BaseConfig):
 
 
 class ProductionConfig(BaseConfig):
-    pass
+    SECRET_KEY: str = os.environ.get(
+        "SECRET_KEY", "production-secret-key-must-be-changed"
+    )
 
 
 class TestingConfig(BaseConfig):
     # https://fastapi.tiangolo.com/advanced/testing-database/
     DATABASE_URL: str = "sqlite:///./test.db"
     DATABASE_CONNECT_DICT: dict = {"check_same_thread": False}
+    SECRET_KEY: str = "test-secret-key"
 
 
 @lru_cache()

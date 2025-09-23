@@ -3,3 +3,8 @@ DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 WS_MESSAGE_QUEUE=redis://redis:6379/0
+
+
+# JWT Configuration
+SECRET_KEY=your-secret-key-change-this-in-production-make-it-long-and-random
+ACCESS_TOKEN_EXPIRE_MINUTES=1440

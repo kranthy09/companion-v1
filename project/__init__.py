@@ -17,23 +17,30 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
 
-    from project.logging import configure_logging  # new
+    from project.logging import configure_logging
 
-    configure_logging()  # new
+    configure_logging()
 
     # do this before loading routes
     from project.celery_utils import create_celery
 
     app.celery_app = create_celery()
 
+    # Include authentication routes
+    from project.auth import auth_router
+
+    app.include_router(auth_router)
+
+    # Include existing routes
     from project.users import users_router
 
     app.include_router(users_router)
-    from project.ws import ws_router  # new
 
-    app.include_router(ws_router)  # new
+    from project.ws import ws_router
 
-    from project.ws.views import register_socketio_app  # new
+    app.include_router(ws_router)
+
+    from project.ws.views import register_socketio_app
 
     register_socketio_app(app)
 
