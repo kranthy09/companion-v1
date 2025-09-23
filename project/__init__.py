@@ -21,6 +21,13 @@ def create_app() -> FastAPI:
 
     configure_logging()
 
+    # Add security middleware
+    from project.middleware.rate_limiter import rate_limit_middleware
+    from project.middleware.throttler import throttle_middleware
+
+    app.middleware("http")(rate_limit_middleware)
+    app.middleware("http")(throttle_middleware)
+
     # do this before loading routes
     from project.celery_utils import create_celery
 
