@@ -1,27 +1,50 @@
+# FastAPI and Web Framework
 fastapi==0.108.0
 uvicorn[standard]==0.25.0
-celery==5.3.6
-redis==5.0.1
-flower==2.0.1
+python-multipart==0.0.6
+gunicorn==21.2.0
+
+# Database and ORM
 SQLAlchemy==2.0.25
 alembic==1.13.1
 psycopg2-binary==2.9.9
-watchfiles==0.21.0
-Jinja2==3.1.2
-requests==2.31.0
-asgiref==3.7.2
+
+# Async Task Queue
+celery==5.3.6
+redis==5.0.1
+flower==2.0.1
+
+# WebSocket Support
+python-socketio==5.7.1
 asyncio-redis==0.16.0
 broadcaster==0.2.0
-redis==5.0.1
-python-socketio==5.7.1
+
+# Template Engine
+Jinja2==3.1.2
+
+# HTTP Requests
+requests==2.31.0
+
+# Development and Monitoring
+watchfiles==0.21.0
+
+# Async Support
+asgiref==3.7.2
+
+# Data Validation
+pydantic[email]==2.5.0
+
+# Authentication and Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+
+# Testing Framework
 pytest==7.4.4
 httpx==0.26.0
 pytest-factoryboy==2.6.0
 factory-boy==3.3.0
 pytest-cov==4.1.0
-gunicorn==21.2.0
-# Simple JWT Authentication (sync compatible)
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
-pydantic[email]
+
+# Environment Management
+python-dotenv==1.0.0

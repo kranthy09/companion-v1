@@ -5,8 +5,12 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from project.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing with bcrypt version fix
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__rounds=12,  # Explicit rounds to avoid version issues
+)
 
 # JWT settings
 SECRET_KEY = settings.SECRET_KEY
