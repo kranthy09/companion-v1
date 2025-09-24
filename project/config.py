@@ -1,7 +1,7 @@
 """
 companion/project/config.py
 
-PRoject configuration file, with environment configs
+Project configuration file, with environment configs
 """
 
 import os
@@ -21,16 +21,32 @@ class BaseConfig:
     BASE_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent
 
     DATABASE_URL: str = os.environ.get("DATABASE_URL")
+    FASTAPI_CONFIG: str = os.environ.get("FASTAPI_CONFIG")
     DATABASE_CONNECT_DICT: dict = {}
 
-    # JWT Configuration
+    # JWT Configuration - MOVED TO ENVIRONMENT
     SECRET_KEY: str = os.environ.get(
-        "SECRET_KEY",
-        "your-secret-key-change-this-in-production-make-it-long-and-random",
+        "SECRET_KEY", "dev-only-key-change-in-production"  # Shorter default
     )
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-        os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "1440")
-    )  # 24 hours
+        os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+    )
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(
+        os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "7")
+    )
+
+    # Security
+    CORS_ORIGINS: list = os.environ.get(
+        "CORS_ORIGINS", "http://localhost:3000,http://localhost:8000"
+    ).split(",")
+
+    # Database Pool Settings
+    DATABASE_POOL_SIZE: int = int(os.environ.get("DATABASE_POOL_SIZE", "10"))
+    DATABASE_MAX_OVERFLOW: int = int(
+        os.environ.get("DATABASE_MAX_OVERFLOW", "20")
+    )
+    DATABASE_POOL_PRE_PING: bool = True  # Check connections before using
 
     # Celery Configuration
     CELERY_BROKER_URL: str = os.environ.get(
@@ -70,20 +86,24 @@ class BaseConfig:
 
 
 class DevelopmentConfig(BaseConfig):
-    pass
+    DEBUG: bool = True
 
 
 class ProductionConfig(BaseConfig):
-    SECRET_KEY: str = os.environ.get(
-        "SECRET_KEY", "production-secret-key-must-be-changed"
-    )
+    DEBUG: bool = False
+    # Enforce SECRET_KEY in production
+    SECRET_KEY: str = os.environ.get("SECRET_KEY")
+    if not SECRET_KEY:
+        raise ValueError(
+            "SECRET_KEY environment variable is required in production"
+        )
 
 
 class TestingConfig(BaseConfig):
-    # https://fastapi.tiangolo.com/advanced/testing-database/
     DATABASE_URL: str = "sqlite:///./test.db"
     DATABASE_CONNECT_DICT: dict = {"check_same_thread": False}
     SECRET_KEY: str = "test-secret-key"
+    CELERY_TASK_ALWAYS_EAGER: bool = True
 
 
 @lru_cache()

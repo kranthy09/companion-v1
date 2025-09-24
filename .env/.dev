@@ -1,5 +1,25 @@
+# .env/.dev-sample
+
 FASTAPI_CONFIG=development
 DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
+
+# Security - CHANGE THESE IN PRODUCTION
+
+SECRET_KEY=dev-secret-key-change-this-in-production-make-it-long-and-random
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# CORS Origins (comma-separated)
+
+CORS_ORIGINS=http://localhost:3000,http://localhost:8000,http://localhost:8010
+
+# Database Connection Pool
+
+DATABASE_POOL_SIZE=10
+DATABASE_MAX_OVERFLOW=20
+
+# Celery/Redis
+
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 WS_MESSAGE_QUEUE=redis://redis:6379/0

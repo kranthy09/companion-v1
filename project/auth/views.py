@@ -1,12 +1,13 @@
 """
 companion/project/auth/views.py
 
-Auth App user management APIs
+Auth App user management APIs with refresh tokens
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from project.database import get_db_session
 from project.auth.models import User
@@ -20,7 +21,8 @@ from project.auth.schemas import (
 from project.auth.utils import (
     verify_password,
     get_password_hash,
-    create_access_token,
+    create_token_pair,
+    verify_token,
 )
 from project.auth.dependencies import (
     get_current_active_user,
@@ -29,19 +31,27 @@ from project.auth.dependencies import (
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenPairResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
 @auth_router.post("/register", response_model=AuthResponse)
 def register(
     user_data: UserCreate, session: Session = Depends(get_db_session)
 ):
-    """Register new user"""
-    # Check if user exists
+    """Register new user with token pair"""
     existing_user = (
         session.query(User).filter(User.email == user_data.email).first()
     )
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Create user
     hashed_password = get_password_hash(user_data.password)
     user = User(
         email=user_data.email,
@@ -56,20 +66,20 @@ def register(
     session.commit()
     session.refresh(user)
 
-    # Create token
-    access_token = create_access_token(data={"sub": user.email})
+    tokens = create_token_pair(user.email)
 
     return AuthResponse(
-        user=UserRead.from_orm(user), token=Token(access_token=access_token)
+        user=UserRead.from_orm(user),
+        token=Token(access_token=tokens["access_token"]),
     )
 
 
-@auth_router.post("/login", response_model=Token)
+@auth_router.post("/login", response_model=TokenPairResponse)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_db_session),
 ):
-    """Login user"""
+    """Login user and return token pair"""
     user = session.query(User).filter(User.email == form_data.username).first()
 
     if not user or not verify_password(
@@ -86,8 +96,36 @@ def login(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
 
-    access_token = create_access_token(data={"sub": user.email})
-    return Token(access_token=access_token)
+    tokens = create_token_pair(user.email)
+    return TokenPairResponse(**tokens)
+
+
+@auth_router.post("/refresh", response_model=TokenPairResponse)
+def refresh_token(
+    request: RefreshTokenRequest, session: Session = Depends(get_db_session)
+):
+    """Get new access token using refresh token"""
+    try:
+        payload = verify_token(request.refresh_token, token_type="refresh")
+        email = payload.get("sub")
+
+        user = session.query(User).filter(User.email == email).first()
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token",
+            )
+
+        tokens = create_token_pair(user.email)
+        return TokenPairResponse(**tokens)
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
 
 
 @auth_router.get("/me", response_model=UserRead)
