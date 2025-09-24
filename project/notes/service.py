@@ -1,0 +1,144 @@
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import or_, desc, asc
+from datetime import datetime
+
+from .models import Note
+from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
+
+
+class NoteService:
+    """Service class for Note operations"""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create_note(self, user_id: str, note_data: NoteCreate) -> Note:
+        """Create a new note for a user"""
+        print("user_id: ", user_id)
+        note = Note(
+            user_id=user_id,
+            title=note_data.title,
+            content=note_data.content,
+            content_type=note_data.content_type,
+            tags=note_data.tags,
+        )
+        self.db.add(note)
+        self.db.commit()
+        self.db.refresh(note)
+        return note
+
+    def get_note_by_id(self, note_id: int, user_id: int) -> Optional[Note]:
+        """Get a specific note by ID for a user"""
+        return (
+            self.db.query(Note)
+            .filter(Note.id == note_id, Note.user_id == user_id)
+            .first()
+        )
+
+    def get_user_notes(
+        self, user_id: int, query_params: NoteQueryParams
+    ) -> tuple[List[Note], int]:
+        """Get paginated notes for a user with optional filters"""
+        query = self.db.query(Note).filter(Note.user_id == user_id)
+
+        # Apply search filter
+        if query_params.search:
+            search_term = f"%{query_params.search}%"
+            query = query.filter(
+                or_(
+                    Note.title.ilike(search_term),
+                    Note.content.ilike(search_term),
+                )
+            )
+
+        # Apply content type filter
+        if query_params.content_type:
+            query = query.filter(
+                Note.content_type == query_params.content_type
+            )
+
+        # Apply tags filter (match any of the provided tags)
+        if query_params.tags:
+            # Using JSON contains for PostgreSQL
+            for tag in query_params.tags:
+                query = query.filter(Note.tags.contains([tag]))
+
+        # Get total count before pagination
+        total_count = query.count()
+
+        # Apply sorting
+        sort_column = getattr(Note, query_params.sort_by)
+        if query_params.sort_order == "desc":
+            query = query.order_by(desc(sort_column))
+        else:
+            query = query.order_by(asc(sort_column))
+
+        # Apply pagination
+        offset = (query_params.page - 1) * query_params.page_size
+        notes = query.offset(offset).limit(query_params.page_size).all()
+
+        return notes, total_count
+
+    def update_note(
+        self, note_id: int, user_id: int, note_data: NoteUpdate
+    ) -> Optional[Note]:
+        """Update an existing note"""
+        note = self.get_note_by_id(note_id, user_id)
+        if not note:
+            return None
+
+        # Update only provided fields
+        if note_data.title is not None:
+            note.title = note_data.title
+        if note_data.content is not None:
+            note.content = note_data.content
+            note.update_word_count()
+        if note_data.content_type is not None:
+            note.content_type = note_data.content_type
+        if note_data.tags is not None:
+            note.tags = note_data.tags
+
+        note.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(note)
+        return note
+
+    def delete_note(self, note_id: int, user_id: int) -> bool:
+        """Delete a note"""
+        note = self.get_note_by_id(note_id, user_id)
+        if not note:
+            return False
+
+        self.db.delete(note)
+        self.db.commit()
+        return True
+
+    def get_user_notes_stats(self, user_id: int) -> dict:
+        """Get statistics about user's notes"""
+        notes = self.db.query(Note).filter(Note.user_id == user_id).all()
+
+        total_notes = len(notes)
+        total_words = sum(note.words_count for note in notes)
+
+        # Count by content type
+        content_types = {}
+        for note in notes:
+            content_types[note.content_type] = (
+                content_types.get(note.content_type, 0) + 1
+            )
+
+        # Get all unique tags
+        all_tags = set()
+        for note in notes:
+            if note.tags:
+                all_tags.update(note.tags)
+
+        return {
+            "total_notes": total_notes,
+            "total_words": total_words,
+            "content_types": content_types,
+            "unique_tags": list(all_tags),
+            "tags_count": len(all_tags),
+        }

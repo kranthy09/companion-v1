@@ -1,0 +1,91 @@
+from pydantic import BaseModel, Field, validator
+from typing import List, Optional
+from datetime import datetime
+
+
+# Request Schemas
+class NoteCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1)
+    content_type: str = Field(default="text", pattern="^(text|markdown|html)$")
+    tags: Optional[List[str]] = Field(default_factory=list)
+
+    @validator("title", "content")
+    def strip_whitespace(cls, v):
+        return v.strip() if v else v
+
+
+class NoteUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=255)
+    content: Optional[str] = Field(None, min_length=1)
+    content_type: Optional[str] = Field(None, pattern="^(text|markdown|html)$")
+    tags: Optional[List[str]] = None
+
+    @validator("title", "content")
+    def strip_whitespace(cls, v):
+        return v.strip() if v else v
+
+
+# Response Schemas
+class NoteBase(BaseModel):
+    id: int
+    user_id: str  # UUID as string
+    title: str
+    content: str
+    content_type: str
+    tags: List[str]
+    has_ai_summary: bool
+    ai_enhanced_content: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    words_count: int
+
+    @validator("user_id", pre=True)
+    def uuid_to_str(cls, v):
+        """Convert UUID to string"""
+        if hasattr(v, "__str__"):
+            return str(v)
+        return v
+
+    class Config:
+        from_attributes = True
+
+
+class NoteResponse(BaseModel):
+    success: bool = True
+    data: NoteBase
+    message: Optional[str] = None
+
+
+class NotesListResponse(BaseModel):
+    success: bool = True
+    data: List[NoteBase]
+    total_count: int
+    page: int = 1
+    page_size: int = 20
+    message: Optional[str] = None
+
+
+class NoteDeleteResponse(BaseModel):
+    success: bool = True
+    message: str = "Note deleted successfully"
+
+
+# Error Response
+class ErrorResponse(BaseModel):
+    success: bool = False
+    error: str
+    detail: Optional[str] = None
+
+
+# Filter/Query Schemas
+class NoteQueryParams(BaseModel):
+    search: Optional[str] = None
+    tags: Optional[List[str]] = None
+    content_type: Optional[str] = None
+    page: int = Field(default=1, ge=1)
+    page_size: int = Field(default=20, ge=1, le=100)
+    sort_by: str = Field(
+        default="created_at", pattern="^(created_at|updated_at|title)$"
+    )
+    sort_order: str = Field(default="desc", pattern="^(asc|desc)$")

@@ -35,13 +35,13 @@ def create_app() -> FastAPI:
 
     # Include authentication routes
     from project.auth import auth_router
-
-    app.include_router(auth_router)
+    from project.users import users_router
+    from project.notes import notes_router  # new
 
     # Include existing routes
-    from project.users import users_router
-
+    app.include_router(auth_router)
     app.include_router(users_router)
+    app.include_router(notes_router)
 
     from project.ws import ws_router
 
