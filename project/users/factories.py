@@ -1,3 +1,9 @@
+"""
+companion/project/users/factories.py
+
+User App model factories for testing.
+"""
+
 import factory
 from factory import LazyAttribute, Faker
 

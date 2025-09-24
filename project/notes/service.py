@@ -1,3 +1,9 @@
+"""
+companion/project/notes/service.py
+
+Notes App, NoteService for note management in backend
+"""
+
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc, asc

@@ -1,5 +1,8 @@
-# Remove the old User model - it's now in project/auth/models.py
-# This file can contain other user-related models like:
+"""
+companion/project/users/models.py
+
+User associated models in the User App.
+"""
 
 from sqlalchemy import (
     Column,

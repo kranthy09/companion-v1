@@ -1,3 +1,9 @@
+"""
+companion/project/users/views.py
+
+User App APIs
+"""
+
 import logging
 import random
 from string import ascii_lowercase

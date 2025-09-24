@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# FastAPI postgres db reset script
+# This script removes the existing db, migrations, and migrate existing models.
+
 echo "🗑️  Resetting database and migrations..."
 
 # Stop containers

@@ -1,3 +1,9 @@
+"""
+companion/project/__init__.py
+
+project root, app with configuration, routers, middleware setup
+"""
+
 from contextlib import asynccontextmanager
 from broadcaster import Broadcast
 from fastapi import FastAPI

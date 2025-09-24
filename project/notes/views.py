@@ -1,3 +1,9 @@
+"""
+companion/project/notes/views.py
+
+Notes App APIs
+"""
+
 from fastapi import Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional

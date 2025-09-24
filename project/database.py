@@ -1,3 +1,9 @@
+"""
+companion/project/database.py
+
+DB setup for API usage and celery tasks usage.
+"""
+
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine

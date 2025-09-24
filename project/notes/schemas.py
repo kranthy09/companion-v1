@@ -1,3 +1,9 @@
+"""
+companion/project/notes/schemas.py
+
+Notes App API request and response schemas.
+"""
+
 from pydantic import BaseModel, Field, validator
 from typing import List, Optional
 from datetime import datetime

@@ -1,3 +1,9 @@
+"""
+companion/project/auth/utils.py
+
+Utility functions to jwt token management for Auth App
+"""
+
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt

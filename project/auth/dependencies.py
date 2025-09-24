@@ -1,3 +1,9 @@
+"""
+companion/project/auth/dependencies.py
+
+centralized auth dependencies for user authentication.
+"""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session

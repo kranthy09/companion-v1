@@ -1,3 +1,9 @@
+"""
+companion/project/celery_utils.py
+
+Utils for celery usage in the app
+"""
+
 import functools
 
 from celery.utils.time import get_exponential_backoff_interval

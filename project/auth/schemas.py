@@ -1,3 +1,9 @@
+"""
+companion/project/auth/schemas.py
+
+Auth app request and response schemas
+"""
+
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from uuid import UUID

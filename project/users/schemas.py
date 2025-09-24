@@ -1,10 +1,11 @@
+"""
+companion/project/users/models.py
+
+User App API request and response schemas
+"""
+
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
-
-
-# Remove the old UserBody schema - user auth is
-# # handled in project/auth/schemas.py
-# This file now contains business logic schemas
 
 
 class UserProfileSchema(BaseModel):
@@ -35,7 +36,6 @@ class UserActivitySchema(BaseModel):
     user_agent: Optional[str] = None
 
 
-# Legacy schema for backward compatibility
 class UserBody(BaseModel):
     """Legacy schema - use auth schemas instead"""
 

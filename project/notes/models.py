@@ -1,3 +1,9 @@
+"""
+companion/project/notes/models.py
+
+Note Model in the app
+"""
+
 from sqlalchemy import (
     Column,
     Integer,

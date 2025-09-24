@@ -1,3 +1,8 @@
+"""
+companion/project/ws/views.py
+
+"""
+
 import json
 
 import socketio

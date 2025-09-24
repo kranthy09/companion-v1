@@ -1,3 +1,7 @@
+"""
+companion/project/middleware/rate_limitter.py
+"""
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import time

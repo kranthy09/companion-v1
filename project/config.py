@@ -1,3 +1,9 @@
+"""
+companion/project/config.py
+
+PRoject configuration file, with environment configs
+"""
+
 import os
 import pathlib
 from functools import lru_cache

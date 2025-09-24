@@ -1,3 +1,9 @@
+"""
+companion/project/users/tasks.py
+
+User Celery tasks
+"""
+
 import random
 
 import requests

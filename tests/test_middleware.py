@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+"""
+Example of how to use the Middleware with APIs
+Run this after starting the application with docker-compose up
+"""
+
 import requests
 import concurrent.futures
 

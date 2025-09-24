@@ -1,3 +1,9 @@
+"""
+companion/project/logging.py
+
+Logging configuration for the project
+"""
+
 import logging
 import logging.config
 
