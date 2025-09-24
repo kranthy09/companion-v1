@@ -1,7 +1,7 @@
 """
 companion/project/__init__.py
 
-Project root with all production fixes
+Project root with validation and error logging
 """
 
 from contextlib import asynccontextmanager
@@ -12,11 +12,17 @@ from fastapi.exceptions import RequestValidationError, HTTPException
 
 from project.config import settings
 
+# Add validation on startup
+from project.config_validator import config_validator
+
 broadcast = Broadcast(settings.WS_MESSAGE_QUEUE)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate configuration on startup
+    config_validator.check_and_exit_on_errors()
+
     await broadcast.connect()
     yield
     await broadcast.disconnect()
@@ -43,16 +49,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Add custom middleware
+    # Add custom middleware (ORDER MATTERS)
     from project.middleware.exception_handlers import (
         exception_handler_middleware,
         validation_exception_handler,
         http_exception_handler,
     )
+    from project.middleware.validation import validation_middleware
     from project.middleware.rate_limiter import rate_limit_middleware
     from project.middleware.throttler import throttle_middleware
 
     app.middleware("http")(exception_handler_middleware)
+    app.middleware("http")(validation_middleware)  # Add this
     app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(throttle_middleware)
 
@@ -74,7 +82,7 @@ def create_app() -> FastAPI:
     from project.health import health_router
     from project.ws import ws_router
 
-    app.include_router(health_router)  # No prefix for health checks
+    app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(notes_router)

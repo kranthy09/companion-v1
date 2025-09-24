@@ -1,10 +1,10 @@
 """
 companion/project/notes/schemas.py
 
-Notes App API request and response schemas.
+Updated Notes schemas for integer IDs and modern Pydantic
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -16,7 +16,8 @@ class NoteCreate(BaseModel):
     content_type: str = Field(default="text", pattern="^(text|markdown|html)$")
     tags: Optional[List[str]] = Field(default_factory=list)
 
-    @validator("title", "content")
+    @field_validator("title", "content")
+    @classmethod
     def strip_whitespace(cls, v):
         return v.strip() if v else v
 
@@ -27,15 +28,18 @@ class NoteUpdate(BaseModel):
     content_type: Optional[str] = Field(None, pattern="^(text|markdown|html)$")
     tags: Optional[List[str]] = None
 
-    @validator("title", "content")
+    @field_validator("title", "content")
+    @classmethod
     def strip_whitespace(cls, v):
         return v.strip() if v else v
 
 
 # Response Schemas
 class NoteBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
-    user_id: str  # UUID as string
+    user_id: int  # Changed from string to int
     title: str
     content: str
     content_type: str
@@ -45,16 +49,6 @@ class NoteBase(BaseModel):
     created_at: datetime
     updated_at: datetime
     words_count: int
-
-    @validator("user_id", pre=True)
-    def uuid_to_str(cls, v):
-        """Convert UUID to string"""
-        if hasattr(v, "__str__"):
-            return str(v)
-        return v
-
-    class Config:
-        from_attributes = True
 
 
 class NoteResponse(BaseModel):

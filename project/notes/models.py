@@ -1,71 +1,64 @@
 """
 companion/project/notes/models.py
 
-Note Model in the app
+Modern SQLAlchemy 2.0 Notes Model
 """
 
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
-    Column,
-    Integer,
     String,
     Text,
     DateTime,
     ForeignKey,
     JSON,
     Boolean,
+    Integer,
 )
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
 from datetime import datetime
+from typing import Optional, List, TYPE_CHECKING
 
 from project.database import Base
+
+if TYPE_CHECKING:
+    from project.auth.models import User
 
 
 class Note(Base):
     __tablename__ = "notes"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+
+    # Content fields
+    title: Mapped[str] = mapped_column(String(255))
+    content: Mapped[str] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(String(50), default="text")
+
+    # Metadata
+    tags: Mapped[List[str]] = mapped_column(JSON, default=list)
+    has_ai_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_enhanced_content: Mapped[Optional[str]] = mapped_column(Text)
+    words_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
     )
-    title = Column(String(255), nullable=False)
-    content = Column(Text, nullable=False)
-    content_type = Column(String(50), default="text")  # text, markdown, etc.
-    tags = Column(JSON, default=list)  # Store as JSON array
-    has_ai_summary = Column(Boolean, default=False)
-    ai_enhanced_content = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
-    words_count = Column(Integer, default=0)
 
-    # Relationship - reference auth User model
-    user = relationship("project.auth.models.User", backref="notes")
-
-    def __init__(
-        self,
-        user_id,
-        title,
-        content,
-        content_type="text",
-        tags=None,
-        *args,
-        **kwargs
-    ):
-        self.user_id = user_id
-        self.title = title
-        self.content = content
-        self.content_type = content_type
-        self.tags = tags or []
-        self.words_count = len(content.split()) if content else 0
-        super().__init__(*args, **kwargs)
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="notes")
 
     @property
-    def user_id_str(self):
+    def user_id_str(self) -> str:
         """Return user_id as string for serialization"""
-        return str(self.user_id) if self.user_id else None
+        return str(self.user_id)
 
-    def update_word_count(self):
+    def update_word_count(self) -> None:
         """Update word count based on current content"""
         self.words_count = len(self.content.split()) if self.content else 0
+
+    def __repr__(self) -> str:
+        return f"<Note(id={self.id}, title='{self.title[:30]}...')>"

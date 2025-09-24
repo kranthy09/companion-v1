@@ -58,9 +58,9 @@ def list_notes(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     sort_by: str = Query(
-        "created_at", regex="^(created_at|updated_at|title)$"
+        "created_at", pattern="^(created_at|updated_at|title)$"
     ),
-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):

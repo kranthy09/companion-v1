@@ -2,7 +2,7 @@
 
 FASTAPI_CONFIG=development
 DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
-
+DATABASE_TEST_URL=sqlite:///./test.db
 # Security - CHANGE THESE IN PRODUCTION
 
 SECRET_KEY=dev-secret-key-change-this-in-production-make-it-long-and-random

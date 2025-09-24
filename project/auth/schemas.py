@@ -1,12 +1,11 @@
 """
 companion/project/auth/schemas.py
 
-Auth app request and response schemas
+Updated Auth schemas for integer IDs
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
-from uuid import UUID
 from datetime import datetime
 
 
@@ -39,7 +38,9 @@ class UserUpdate(BaseModel):
 class UserRead(BaseModel):
     """Schema for reading user data"""
 
-    id: UUID
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int  # Changed from UUID to int
     email: EmailStr
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -55,9 +56,6 @@ class UserRead(BaseModel):
         if self.first_name and self.last_name:
             return f"{self.first_name} {self.last_name}"
         return self.first_name or self.last_name or ""
-
-    class Config:
-        from_attributes = True
 
 
 class Token(BaseModel):

@@ -21,6 +21,7 @@ class BaseConfig:
     BASE_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent
 
     DATABASE_URL: str = os.environ.get("DATABASE_URL")
+    DATABASE_TEST_URL: str = os.environ.get("DATABASE_TEST_URL")
     FASTAPI_CONFIG: str = os.environ.get("FASTAPI_CONFIG")
     DATABASE_CONNECT_DICT: dict = {}
 

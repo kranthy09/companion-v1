@@ -1,15 +1,17 @@
 """
-companion/project/users/models.py
+companion/project/users/schemas.py
 
-User App API request and response schemas
+User App API request and response schemas with modern Pydantic v2
 """
 
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, ConfigDict
 from typing import Optional
 
 
 class UserProfileSchema(BaseModel):
     """Schema for extended user profile"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     bio: Optional[str] = None
     avatar_url: Optional[HttpUrl] = None
@@ -21,6 +23,8 @@ class UserProfileSchema(BaseModel):
 class UserPreferencesSchema(BaseModel):
     """Schema for user preferences"""
 
+    model_config = ConfigDict(from_attributes=True)
+
     email_notifications: Optional[int] = None  # 1=enabled, 0=disabled
     theme: Optional[str] = None  # "light", "dark"
     language: Optional[str] = None  # "en", "es", etc.
@@ -29,6 +33,8 @@ class UserPreferencesSchema(BaseModel):
 
 class UserActivitySchema(BaseModel):
     """Schema for user activity logging"""
+
+    model_config = ConfigDict(from_attributes=True)
 
     activity_type: str
     activity_data: Optional[dict] = None
@@ -41,3 +47,51 @@ class UserBody(BaseModel):
 
     email: str
     username: Optional[str] = None
+
+
+# Profile CRUD Schemas
+class UserProfileCreate(BaseModel):
+    bio: Optional[str] = None
+    avatar_url: Optional[HttpUrl] = None
+    website: Optional[HttpUrl] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+
+
+class UserProfileUpdate(BaseModel):
+    bio: Optional[str] = None
+    avatar_url: Optional[HttpUrl] = None
+    website: Optional[HttpUrl] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+
+
+class UserProfileResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    bio: Optional[str]
+    avatar_url: Optional[str]
+    website: Optional[str]
+    company: Optional[str]
+    location: Optional[str]
+
+
+# Preferences CRUD Schemas
+class UserPreferencesUpdate(BaseModel):
+    email_notifications: Optional[int] = None
+    theme: Optional[str] = None
+    language: Optional[str] = None
+    timezone: Optional[str] = None
+
+
+class UserPreferencesResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    email_notifications: int
+    theme: str
+    language: str
+    timezone: str

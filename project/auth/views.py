@@ -69,7 +69,7 @@ def register(
     tokens = create_token_pair(user.email)
 
     return AuthResponse(
-        user=UserRead.from_orm(user),
+        user=UserRead.model_validate(user),
         token=Token(access_token=tokens["access_token"]),
     )
 
