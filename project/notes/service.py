@@ -22,12 +22,15 @@ class NoteService:
     def create_note(self, user_id: str, note_data: NoteCreate) -> Note:
         """Create a new note for a user"""
         print("user_id: ", user_id)
+        word_count = len(note_data.content.split(" "))
+
         note = Note(
             user_id=user_id,
             title=note_data.title,
             content=note_data.content,
             content_type=note_data.content_type,
             tags=note_data.tags,
+            words_count=word_count,
         )
         self.db.add(note)
         self.db.commit()
@@ -124,9 +127,11 @@ class NoteService:
     def get_user_notes_stats(self, user_id: int) -> dict:
         """Get statistics about user's notes"""
         notes = self.db.query(Note).filter(Note.user_id == user_id).all()
+        print("notes: ", notes)
 
         total_notes = len(notes)
         total_words = sum(note.words_count for note in notes)
+        print("total words: ", total_words)
 
         # Count by content type
         content_types = {}

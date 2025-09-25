@@ -1,7 +1,7 @@
 """
 tests/conftest.py
 
-Complete test fixtures with proper DB session override
+Fixed test fixtures with proper model imports
 """
 
 import os
@@ -27,9 +27,19 @@ def engine():
 
 @pytest.fixture(scope="session")
 def create_tables(engine):
-    """Create all tables once per test session"""
+    """Create all tables once per test session on the same engine"""
     from project.database import Base
 
+    # CRITICAL: Import all models before creating tables
+    from project.auth.models import User  # noqa
+    from project.notes.models import Note  # noqa
+    from project.users.models import (  # noqa
+        UserProfile,
+        UserPreferences,
+        UserActivity,
+    )
+
+    # Create tables on the test engine
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -37,9 +47,11 @@ def create_tables(engine):
 
 @pytest.fixture
 def db_session(engine, create_tables):
-    """Database session for individual tests"""
+    """Database session for individual tests
+    using the same engine with tables"""
     from project.database import SessionLocal
 
+    # Use the same engine that has the tables created
     connection = engine.connect()
     transaction = connection.begin()
     session = SessionLocal(bind=connection)
