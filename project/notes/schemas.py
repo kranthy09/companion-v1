@@ -57,6 +57,20 @@ class NoteResponse(BaseModel):
     message: Optional[str] = None
 
 
+class NoteStatsBase(BaseModel):
+    total_notes: int
+    total_words: int
+    content_types: dict
+    unique_tags: List[str]
+    tags_count: int
+
+
+class NoteStatsReposne(BaseModel):
+    success: bool = True
+    data: NoteStatsBase
+    message: Optional[str] = None
+
+
 class NotesListResponse(BaseModel):
     success: bool = True
     data: List[NoteBase]
