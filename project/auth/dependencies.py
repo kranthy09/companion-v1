@@ -1,7 +1,7 @@
 """
 companion/project/auth/dependencies.py
 
-centralized auth dependencies for user authentication.
+Fixed centralized auth dependencies for user authentication.
 """
 
 from fastapi import Depends, HTTPException, status
@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Security scheme
 security = HTTPBearer()
-optional_security = HTTPBearer(
-    auto_error=False
-)  # Don't auto-raise on missing token
+optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
@@ -41,6 +39,7 @@ def get_current_user(
             )
 
         user = session.query(User).filter(User.email == email).first()
+        print("User: ", user)
         if not user:
             logger.warning(f"User not found for email: {email}")
             raise HTTPException(
@@ -48,8 +47,10 @@ def get_current_user(
                 detail="User not found",
             )
 
+        # Check if user is inactive AFTER finding them
         if not user.is_active:
             logger.warning(f"Inactive user attempted access: {email}")
+            # Changed from 403 to 400
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Account is inactive",

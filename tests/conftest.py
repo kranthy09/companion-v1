@@ -1,19 +1,18 @@
 """
 tests/conftest.py
 
-Complete test fixtures with separate DB sessions
+Complete test fixtures with proper DB session override
 """
 
 import os
 import pytest
 from contextlib import asynccontextmanager
-
-# In conftest.py or test files
 import warnings
 
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="passlib"
 )
+
 # Set testing environment before imports
 os.environ["FASTAPI_CONFIG"] = "testing"
 
@@ -53,11 +52,12 @@ def db_session(engine, create_tables):
 
 
 @pytest.fixture
-def app_no_middleware():
+def app_no_middleware(db_session):
     """Minimal app without rate limiting middleware"""
     from fastapi import FastAPI
     from project import broadcast
     from fastapi.middleware.cors import CORSMiddleware
+    from project.database import get_db_session
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -66,6 +66,12 @@ def app_no_middleware():
         await broadcast.disconnect()
 
     app = FastAPI(title="Test API", lifespan=lifespan, debug=True)
+
+    # CRITICAL: Override database dependency
+    def get_test_db_session():
+        return db_session
+
+    app.dependency_overrides[get_db_session] = get_test_db_session
 
     # Add CORS only
     app.add_middleware(
@@ -110,11 +116,20 @@ def client_no_middleware(app_no_middleware):
 
 
 @pytest.fixture
-def app_with_middleware():
+def app_with_middleware(db_session):
     """Full app with all middleware for middleware testing"""
     from project import create_app
+    from project.database import get_db_session
 
-    return create_app()
+    app = create_app()
+
+    # Override database dependency for middleware tests too
+    def get_test_db_session():
+        return db_session
+
+    app.dependency_overrides[get_db_session] = get_test_db_session
+
+    return app
 
 
 @pytest.fixture
@@ -123,18 +138,3 @@ def client_with_middleware(app_with_middleware):
     from fastapi.testclient import TestClient
 
     return TestClient(app_with_middleware)
-
-
-# Override database dependency for testing
-@pytest.fixture(autouse=True)
-def override_db_dependency(db_session):
-    """Override database dependency for all tests"""
-    from project.database import get_db_session  # noqa
-    from project import create_app  # noqa
-    from fastapi import Depends  # noqa
-
-    def get_test_db_session():
-        return db_session
-
-    # This will be used by dependency injection
-    pytest.test_db_session = db_session
