@@ -3,3 +3,6 @@ __pycache__
 __pycache__/*
 project/__pycache__/*
 
+.env/
+.env/*
+.env/.dev
