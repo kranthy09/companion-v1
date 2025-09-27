@@ -9,6 +9,7 @@ import socketio
 from fastapi import FastAPI, WebSocket
 from socketio.asyncio_namespace import AsyncNamespace
 
+from project.auth.utils import verify_token
 from . import ws_router
 from project import broadcast
 from project.celery_utils import get_task_info
@@ -17,6 +18,33 @@ from project.config import settings
 
 @ws_router.websocket("/ws/task_status/{task_id}")
 async def ws_task_status(websocket: WebSocket):
+    # Extract token from cookie
+    cookie_header = websocket.headers.get("cookie", "")
+    cookies = {}
+    if cookie_header:
+        cookies = dict(
+            item.split("=", 1)
+            for item in cookie_header.split("; ")
+            if "=" in item
+        )
+
+    token = cookies.get("access_token")
+
+    if not token:
+        await websocket.close(code=1008, reason="Not authenticated")
+        return
+
+    try:
+        payload = verify_token(token)
+        email = payload.get("sub")
+        if not email:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+    except Exception as e:
+        await websocket.close(
+            code=1008, reason=f"{str(e)}, sToken validation failed"
+        )
+        return
     await websocket.accept()
 
     task_id = websocket.scope["path_params"]["task_id"]
@@ -47,6 +75,29 @@ async def update_celery_task_status(task_id: str):
 class TaskStatusNameSpace(AsyncNamespace):
 
     async def on_join(self, sid, data):
+        # Validate token from cookies
+        environ = self.get_environ(sid)
+        cookie_header = environ.get("HTTP_COOKIE", "")
+        cookies = {}
+        if cookie_header:
+            cookies = dict(
+                item.split("=", 1)
+                for item in cookie_header.split("; ")
+                if "=" in item
+            )
+
+        token = cookies.get("access_token")
+
+        if not token:
+            await self.disconnect(sid)
+            return
+
+        try:
+            verify_token(token)
+        except Exception as e:
+            print(str(e))
+            await self.disconnect(sid)
+            return
         self.enter_room(sid=sid, room=data["task_id"])
         # just in case the task already finish
         await self.emit(
