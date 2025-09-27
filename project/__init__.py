@@ -35,14 +35,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         debug=getattr(settings, "DEBUG", False),
     )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,  # Already present
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["Set-Cookie"],  # ADD THIS
-    )
 
     from project.logging import configure_logging
 
@@ -52,9 +44,10 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
-        allow_credentials=True,
+        allow_credentials=True,  # Already present
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Set-Cookie"],  # ADD THIS
     )
 
     # Add custom middleware (ORDER MATTERS)
@@ -66,9 +59,11 @@ def create_app() -> FastAPI:
     from project.middleware.validation import validation_middleware
     from project.middleware.rate_limiter import rate_limit_middleware
     from project.middleware.throttler import throttle_middleware
+    from project.middleware.csrf import csrf_middleware
 
     app.middleware("http")(exception_handler_middleware)
     app.middleware("http")(validation_middleware)  # Add this
+    app.middleware("http")(csrf_middleware)  # ADD THIS
     app.middleware("http")(rate_limit_middleware)
     app.middleware("http")(throttle_middleware)
 

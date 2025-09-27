@@ -4,6 +4,7 @@ companion/project/auth/views.py
 Auth App user management APIs with refresh tokens
 """
 
+import secrets
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi import Response
@@ -74,11 +75,22 @@ def register(
     session.refresh(user)
 
     tokens = create_token_pair(user.email)
-    # ADD: Set cookie
+    # Set cookie
     response.set_cookie(
         key="access_token",
         value=tokens["access_token"],
         httponly=True,
+        secure=settings.FASTAPI_CONFIG == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    # Set CSRF token cookie
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
         secure=settings.FASTAPI_CONFIG == "production",
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
@@ -118,11 +130,22 @@ def login(
         )
 
     tokens = create_token_pair(user.email)
-    # ADD: Set cookie
+    # Set cookie
     response.set_cookie(
         key="access_token",
         value=tokens["access_token"],
         httponly=True,
+        secure=settings.FASTAPI_CONFIG == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    # Set CSRF token cookie
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,  # JS needs to read this
         secure=settings.FASTAPI_CONFIG == "production",
         samesite="lax",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
@@ -206,5 +229,6 @@ def logout(
         # Blacklist it
         blacklist_token(token, exp)
         response.delete_cookie(key="access_token", path="/")
+        response.delete_cookie(key="csrf_token", path="/")
 
     return {"message": "Logged out successfully"}
