@@ -35,6 +35,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         debug=getattr(settings, "DEBUG", False),
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,  # Already present
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Set-Cookie"],  # ADD THIS
+    )
 
     from project.logging import configure_logging
 

@@ -6,6 +6,7 @@ Project configuration file, with environment configs
 
 import os
 import pathlib
+from typing import Optional
 from functools import lru_cache
 from kombu import Queue
 
@@ -89,6 +90,10 @@ class BaseConfig:
         },
     }
     CELERY_TASK_ROUTES = (route_task,)
+    # Cookie Settings
+    COOKIE_DOMAIN: Optional[str] = os.environ.get("COOKIE_DOMAIN", None)
+    COOKIE_SECURE: bool = os.environ.get("FASTAPI_CONFIG") == "production"
+    COOKIE_SAMESITE: str = "lax"
 
 
 class DevelopmentConfig(BaseConfig):

@@ -62,6 +62,7 @@ class Token(BaseModel):
     """Token response schema"""
 
     access_token: str
+    refresh_token: str  # ADD THIS
     token_type: str = "bearer"
 
 

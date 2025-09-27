@@ -57,11 +57,6 @@ class Note(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="notes")
 
-    @property
-    def user_id_str(self) -> str:
-        """Return user_id as string for serialization"""
-        return str(self.user_id)
-
     def update_word_count(self) -> None:
         """Update word count based on current content"""
         self.words_count = len(self.content.split()) if self.content else 0

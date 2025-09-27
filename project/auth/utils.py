@@ -80,6 +80,8 @@ def verify_token(token: str, token_type: str = "access") -> Dict:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
+        if is_token_blacklisted(token):
+            raise HTTPException(401, "Token has been revoked")
 
         # Check token type
         if payload.get("type") != token_type:
@@ -105,3 +107,28 @@ def create_token_pair(email: str) -> Dict[str, str]:
         "refresh_token": refresh_token,
         "token_type": "bearer",
     }
+
+
+def blacklist_token(token: str, expires_at: datetime):
+    from project.database import SessionLocal
+    from project.auth.models import TokenBlacklist
+
+    session = SessionLocal()
+    blacklisted = TokenBlacklist(token=token, expires_at=expires_at)
+    session.add(blacklisted)
+    session.commit()
+    session.close()
+
+
+def is_token_blacklisted(token: str) -> bool:
+    from project.database import SessionLocal
+    from project.auth.models import TokenBlacklist
+
+    session = SessionLocal()
+    exists = (
+        session.query(TokenBlacklist)
+        .filter(TokenBlacklist.token == token)
+        .first()
+    )
+    session.close()
+    return exists is not None

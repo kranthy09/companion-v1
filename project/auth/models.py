@@ -57,3 +57,14 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email='{self.email}')>"
+
+
+class TokenBlacklist(Base):
+    __tablename__ = "token_blacklist"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    blacklisted_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime)

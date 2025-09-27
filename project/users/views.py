@@ -6,7 +6,6 @@ User App APIs
 
 import logging
 import random
-from string import ascii_lowercase
 
 import requests
 from celery.result import AsyncResult
@@ -33,11 +32,6 @@ from project.auth.models import User
 
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="project/users/templates")
-
-
-def random_username():
-    username = "".join([random.choice(ascii_lowercase) for i in range(5)])
-    return username
 
 
 def api_call(email: str):
@@ -98,7 +92,7 @@ def webhook_test_async(current_user: User = Depends(get_optional_user)):
 
     if current_user:
         response_data["user_info"] = {
-            "id": str(current_user.id),
+            "id": current_user.id,
             "email": current_user.email,
         }
 
@@ -110,7 +104,7 @@ def webhook_test_async(current_user: User = Depends(get_optional_user)):
 def get_user_profile(current_user: User = Depends(get_current_active_user)):
     """Get current user's profile information"""
     return {
-        "id": str(current_user.id),
+        "id": current_user.id,
         "email": current_user.email,
         "full_name": current_user.full_name,
         "phone": current_user.phone,
@@ -139,7 +133,7 @@ def transaction_celery(
     return {
         "message": "Welcome email task queued",
         "user": {
-            "id": str(current_user.id),
+            "id": current_user.id,
             "email": current_user.email,
             "full_name": current_user.full_name,
         },
@@ -171,7 +165,7 @@ def user_subscribe(
         task_add_subscribe.delay(str(current_user.id))
         return {
             "message": "Subscription task sent successfully",
-            "user": {"id": str(current_user.id), "email": current_user.email},
+            "user": {"id": current_user.id, "email": current_user.email},
         }
     else:
         # Superuser subscribing another user - would need additional logic

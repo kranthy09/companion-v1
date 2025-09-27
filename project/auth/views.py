@@ -4,11 +4,15 @@ companion/project/auth/views.py
 Auth App user management APIs with refresh tokens
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import Response
 from fastapi.security import OAuth2PasswordRequestForm
+from jose import jwt
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from project.config import settings
 from project.database import get_db_session
 from project.auth.models import User
 from project.auth.schemas import (
@@ -19,6 +23,7 @@ from project.auth.schemas import (
     AuthResponse,
 )
 from project.auth.utils import (
+    blacklist_token,
     verify_password,
     get_password_hash,
     create_token_pair,
@@ -43,7 +48,9 @@ class TokenPairResponse(BaseModel):
 
 @auth_router.post("/register", response_model=AuthResponse)
 def register(
-    user_data: UserCreate, session: Session = Depends(get_db_session)
+    response: Response,
+    user_data: UserCreate,
+    session: Session = Depends(get_db_session),
 ):
     """Register new user with token pair"""
     existing_user = (
@@ -67,15 +74,29 @@ def register(
     session.refresh(user)
 
     tokens = create_token_pair(user.email)
+    # ADD: Set cookie
+    response.set_cookie(
+        key="access_token",
+        value=tokens["access_token"],
+        httponly=True,
+        secure=settings.FASTAPI_CONFIG == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
 
     return AuthResponse(
         user=UserRead.model_validate(user),
-        token=Token(access_token=tokens["access_token"]),
+        token=Token(
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],  # ADD THIS
+        ),
     )
 
 
 @auth_router.post("/login", response_model=TokenPairResponse)
 def login(
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_db_session),
 ):
@@ -97,6 +118,16 @@ def login(
         )
 
     tokens = create_token_pair(user.email)
+    # ADD: Set cookie
+    response.set_cookie(
+        key="access_token",
+        value=tokens["access_token"],
+        httponly=True,
+        secure=settings.FASTAPI_CONFIG == "production",
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
     return TokenPairResponse(**tokens)
 
 
@@ -155,3 +186,25 @@ def update_me(
     session.refresh(current_user)
 
     return UserRead.from_orm(current_user)
+
+
+@auth_router.post("/logout")
+def logout(
+    request: Request,
+    response: Response,  # ADD THIS
+    current_user: User = Depends(get_current_active_user),
+):
+    # Get token from header
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        token = auth_header.split(" ")[1]
+        # Get expiry from token
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        exp = datetime.fromtimestamp(payload["exp"])
+        # Blacklist it
+        blacklist_token(token, exp)
+        response.delete_cookie(key="access_token", path="/")
+
+    return {"message": "Logged out successfully"}

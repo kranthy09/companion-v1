@@ -26,3 +26,6 @@ WS_MESSAGE_QUEUE=redis://redis:6379/0
 
 OLLAMA_BASE_URL=http://ollama:11434
 OLLAMA_MODEL=gemma3
+
+# Cookie settings
+COOKIE_DOMAIN=localhost

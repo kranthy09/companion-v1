@@ -4,7 +4,7 @@ companion/project/auth/dependencies.py
 Fixed centralized auth dependencies for user authentication.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,38 +23,39 @@ optional_security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        optional_security
+    ),
     session: Session = Depends(get_db_session),
 ) -> User:
-    """Get current authenticated user"""
     try:
-        payload = verify_token(credentials.credentials)
+        # Get token from Bearer or Cookie
+        token = None
+        if credentials:
+            token = credentials.credentials
+        else:
+            token = request.cookies.get("access_token")
+
+        if not token:
+            raise HTTPException(401, "Not authenticated")
+
+        # Verify token (works for both Bearer and Cookie)
+        payload = verify_token(token)
         email = payload.get("sub")
 
         if not email:
             logger.warning("JWT token missing 'sub' claim")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing email claim",
-            )
+            raise HTTPException(401, "Invalid token: missing email claim")
 
         user = session.query(User).filter(User.email == email).first()
-        print("User: ", user)
         if not user:
             logger.warning(f"User not found for email: {email}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found",
-            )
+            raise HTTPException(401, "User not found")
 
-        # Check if user is inactive AFTER finding them
         if not user.is_active:
             logger.warning(f"Inactive user attempted access: {email}")
-            # Changed from 403 to 400
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Account is inactive",
-            )
+            raise HTTPException(403, "Account is inactive")
 
         return user
 
@@ -137,7 +138,10 @@ def get_optional_user(
         return None
     except SQLAlchemyError as e:
         logger.error(f"Optional auth: Database error: {str(e)}")
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive",
+        )
     except Exception as e:
         logger.error(f"Optional auth: Unexpected error: {str(e)}")
         return None
