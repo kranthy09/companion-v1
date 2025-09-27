@@ -1,26 +1,25 @@
 """
 companion/project/ollama/views.py
 
-Endpoints with SSE streaming support
+Complete endpoints: background + streaming
 """
 
-from fastapi import Depends, HTTPException, status, Request
-from fastapi.responses import StreamingResponse
+from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from fastapi.templating import Jinja2Templates
-
 
 from . import ollama_router
 from .service import ollama_service
-from .streaming import streaming_service
-from .tasks import task_enhance_note, task_summarize_note
+from .tasks import (
+    task_enhance_note,
+    task_summarize_note,
+    task_stream_enhance_note,
+    task_stream_summarize_note,
+)
 from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.database import get_db_session
 from project.notes.models import Note
-
-templates = Jinja2Templates(directory="project/ollama/templates")
 
 
 class NoteRequest(BaseModel):
@@ -37,13 +36,16 @@ async def check_health():
     }
 
 
+# ============= Background Tasks (No Streaming) =============
+
+
 @ollama_router.post("/enhance")
 def enhance_note(
     request: NoteRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Enhance note (background task - no streaming)"""
+    """Enhance note (background task)"""
     note = (
         db.query(Note)
         .filter(Note.id == request.note_id, Note.user_id == current_user.id)
@@ -59,9 +61,9 @@ def enhance_note(
 
     return {
         "task_id": task.id,
-        "message": "Note enhancement queued",
+        "message": "Enhancement queued",
         "note_id": request.note_id,
-        "type": "enhance",
+        "streaming": False,
     }
 
 
@@ -71,7 +73,7 @@ def summarize_note(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Summarize note (background task - no streaming)"""
+    """Summarize note (background task)"""
     note = (
         db.query(Note)
         .filter(Note.id == request.note_id, Note.user_id == current_user.id)
@@ -87,22 +89,25 @@ def summarize_note(
 
     return {
         "task_id": task.id,
-        "message": "Note summarization queued",
+        "message": "Summary queued",
         "note_id": request.note_id,
-        "type": "summary",
+        "streaming": False,
     }
 
 
-@ollama_router.get("/stream/enhance/{note_id}")
-async def stream_enhance_note(
-    note_id: int,
+# ============= Streaming Tasks =============
+
+
+@ollama_router.post("/enhance/stream")
+def enhance_note_streaming(
+    request: NoteRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Stream note enhancement in real-time (SSE)"""
+    """Enhance note WITH streaming"""
     note = (
         db.query(Note)
-        .filter(Note.id == note_id, Note.user_id == current_user.id)
+        .filter(Note.id == request.note_id, Note.user_id == current_user.id)
         .first()
     )
 
@@ -111,32 +116,28 @@ async def stream_enhance_note(
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
 
-    async def event_stream():
-        async for chunk in streaming_service.stream_enhance_note(
-            note.title, note.content, "improve"
-        ):
-            yield f"data: {chunk}\n\n"
+    task = task_stream_enhance_note.delay(request.note_id, current_user.id)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
+    return {
+        "task_id": task.id,
+        "stream_channel": f"stream:{task.id}",
+        "message": "Enhancement started with streaming",
+        "note_id": request.note_id,
+        "streaming": True,
+        "ws_url": f"/ollama/ws/stream/{task.id}",
+    }
 
 
-@ollama_router.get("/stream/summarize/{note_id}")
-async def stream_summarize_note(
-    note_id: int,
+@ollama_router.post("/summarize/stream")
+def summarize_note_streaming(
+    request: NoteRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Stream note summary in real-time (SSE)"""
+    """Summarize note WITH streaming"""
     note = (
         db.query(Note)
-        .filter(Note.id == note_id, Note.user_id == current_user.id)
+        .filter(Note.id == request.note_id, Note.user_id == current_user.id)
         .first()
     )
 
@@ -145,32 +146,23 @@ async def stream_summarize_note(
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
 
-    async def event_stream():
-        async for chunk in streaming_service.stream_enhance_note(
-            note.title, note.content, "summary"
-        ):
-            yield f"data: {chunk}\n\n"
+    task = task_stream_summarize_note.delay(request.note_id, current_user.id)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        },
-    )
+    return {
+        "task_id": task.id,
+        "stream_channel": f"stream:{task.id}",
+        "message": "Summary started with streaming",
+        "note_id": request.note_id,
+        "streaming": True,
+        "ws_url": f"/ollama/ws/stream/{task.id}",
+    }
 
 
 @ollama_router.get("/task/{task_id}")
 def get_task_status(
     task_id: str, current_user: User = Depends(get_current_user)
 ):
-    """Check task status and get result"""
+    """Check task status"""
     from project.celery_utils import get_task_info
 
     return get_task_info(task_id)
-
-
-@ollama_router.get("/stream-test")
-def stream_test_page(request: Request):
-    return templates.TemplateResponse("stream_test.html", {"request": request})
