@@ -1,7 +1,7 @@
 """
 companion/project/ollama/service.py
 
-Basic Ollama service implementation
+Ollama service with improved prompts
 """
 
 import httpx
@@ -44,9 +44,23 @@ class OllamaService:
     ) -> Dict:
         """Enhance note content"""
         prompts = {
-            "summary": f"Summarize this note in 2-3 sentences:\n\nTitle: {title}\n\nContent:\n{content}",
-            "improve": f"Improve the writing quality of this note:\n\nTitle: {title}\n\nContent:\n{content}",
-            "expand": f"Expand this note with more details:\n\nTitle: {title}\n\nContent:\n{content}",
+            "summary": f"""Create a concise 2-3 sentence summary of this note:
+
+Title: {title}
+
+Content:
+{content}
+
+Summary:""",
+            "improve": f"""Improve and expand this note
+              with better writing quality, more details, and clarity:
+
+Title: {title}
+
+Original Content:
+{content}
+
+Enhanced Version:""",
         }
 
         prompt = prompts.get(enhancement_type, prompts["summary"])
@@ -54,7 +68,7 @@ class OllamaService:
         try:
             result = await self.generate(prompt)
             return {
-                "enhanced_content": result.get("response", ""),
+                "enhanced_content": result.get("response", "").strip(),
                 "success": True,
             }
         except Exception as e:

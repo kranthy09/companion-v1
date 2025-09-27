@@ -16,7 +16,7 @@ from .schemas import (
     NotesListResponse,
     NoteDeleteResponse,
     NoteQueryParams,
-    NoteStatsReposne,
+    NoteStatsResponse,
 )
 from .service import NoteService
 from project.auth.dependencies import (
@@ -164,7 +164,7 @@ def delete_note(
     )
 
 
-@notes_router.get("/stats/summary", response_model=NoteStatsReposne)
+@notes_router.get("/stats/summary", response_model=NoteStatsResponse)
 def get_notes_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
@@ -174,7 +174,7 @@ def get_notes_stats(
     stats = service.get_user_notes_stats(current_user.id)
     print("Stats: ", stats)
 
-    return NoteStatsReposne(
+    return NoteStatsResponse(
         success=True,
         data=stats,
         message="Statistics retrieved successfully",

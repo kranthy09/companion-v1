@@ -1,7 +1,7 @@
 """
 companion/project/notes/schemas.py
 
-Updated Notes schemas for integer IDs and modern Pydantic
+Updated Notes schemas with AI fields
 """
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
@@ -39,13 +39,18 @@ class NoteBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: int  # Changed from string to int
+    user_id: int
     title: str
     content: str
     content_type: str
     tags: List[str]
-    has_ai_summary: bool
+
+    # AI fields
+    ai_summary: Optional[str]
     ai_enhanced_content: Optional[str]
+    has_ai_summary: bool
+    has_ai_enhancement: bool
+
     created_at: datetime
     updated_at: datetime
     words_count: int
@@ -65,7 +70,7 @@ class NoteStatsBase(BaseModel):
     tags_count: int
 
 
-class NoteStatsReposne(BaseModel):
+class NoteStatsResponse(BaseModel):
     success: bool = True
     data: NoteStatsBase
     message: Optional[str] = None

@@ -1,8 +1,8 @@
-"""Modernize models to SQLAlchemy 2.0
+"""Fresh migration Auth, User, Notes models
 
-Revision ID: 2b88c339479f
+Revision ID: 465497c729a9
 Revises: 
-Create Date: 2025-09-24 21:40:34.449430
+Create Date: 2025-09-27 01:05:18.399901
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2b88c339479f'
+revision: str = '465497c729a9'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -42,9 +42,11 @@ def upgrade() -> None:
     sa.Column('content', sa.Text(), nullable=False),
     sa.Column('content_type', sa.String(length=50), nullable=False),
     sa.Column('tags', sa.JSON(), nullable=False),
-    sa.Column('has_ai_summary', sa.Boolean(), nullable=False),
-    sa.Column('ai_enhanced_content', sa.Text(), nullable=True),
     sa.Column('words_count', sa.Integer(), nullable=False),
+    sa.Column('ai_summary', sa.Text(), nullable=True),
+    sa.Column('ai_enhanced_content', sa.Text(), nullable=True),
+    sa.Column('has_ai_summary', sa.Boolean(), nullable=False),
+    sa.Column('has_ai_enhancement', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),

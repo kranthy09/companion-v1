@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SSE Streaming Test</title>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+      }
+      #output {
+        border: 1px solid #ccc;
+        padding: 10px;
+        min-height: 200px;
+      }
+      button {
+        margin: 10px 5px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Ollama SSE Streaming Test</h2>
+
+    <input type="number" id="noteId" placeholder="Note ID" value="1" />
+    <button onclick="streamEnhance()">Stream Enhance</button>
+    <button onclick="streamSummarize()">Stream Summarize</button>
+    <button onclick="clearOutput()">Clear</button>
+
+    <h3>Streaming Output:</h3>
+    <div id="output"></div>
+
+    <script>
+      const token =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMUBleGFtcGxlLmNvbSIsImV4cCI6MTc1ODk0MjM3NCwidHlwZSI6ImFjY2VzcyJ9.jkOiIrUPXPu3JnqljOGx7qQATmi-03bjGA0TDM4PQVg"; // Replace with real token
+
+      function streamEnhance() {
+        const noteId = document.getElementById("noteId").value;
+        startStream(`/ollama/stream/enhance/${noteId}`);
+      }
+
+      function streamSummarize() {
+        const noteId = document.getElementById("noteId").value;
+        startStream(`/ollama/stream/summarize/${noteId}`);
+      }
+
+      function startStream(url) {
+        const output = document.getElementById("output");
+        output.innerHTML = "";
+
+        const eventSource = new EventSource(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        eventSource.onmessage = (event) => {
+          output.innerHTML += event.data;
+        };
+
+        eventSource.onerror = (error) => {
+          console.error("SSE Error:", error);
+          eventSource.close();
+        };
+      }
+
+      function clearOutput() {
+        document.getElementById("output").innerHTML = "";
+      }
+    </script>
+  </body>
+</html>

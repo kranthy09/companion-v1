@@ -54,7 +54,8 @@ for var in "${required_vars[@]}"; do
     fi
 done
 
-log_info "🚀 Starting automated project setup for: $PROJECT_NAME"
+# Display configuration
+log_warning "⚠️  THIS SCRIPT WILL MODIFY YOUR PROJECT FILES ⚠️"
 echo "=================================="
 echo "Project: $PROJECT_NAME"
 echo "Database: $DB_NAME"
@@ -62,6 +63,25 @@ echo "Container Prefix: $CONTAINER_PREFIX"
 echo "API Port: $API_HOST_PORT"
 echo "Flower Port: $FLOWER_HOST_PORT"
 echo "=================================="
+echo ""
+
+# First confirmation
+read -p "$(echo -e ${YELLOW}Are you sure you want to continue? \(Y/N\): ${NC})" -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    log_info "Setup cancelled."
+    exit 0
+fi
+
+# Second confirmation
+read -p "$(echo -e ${RED}This will overwrite existing files. Confirm again? \(Y/N\): ${NC})" -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    log_info "Setup cancelled."
+    exit 0
+fi
+
+log_info "🚀 Starting automated project setup for: $PROJECT_NAME"
 
 # Create backups
 log_info "📁 Creating backups..."
@@ -89,10 +109,8 @@ replace_in_file() {
 
     if [ -f "$file" ]; then
         if [[ "$OSTYPE" == "darwin"* ]]; then
-            # macOS
             sed -i '' "s|${search}|${replace}|g" "$file"
         else
-            # Linux
             sed -i "s|${search}|${replace}|g" "$file"
         fi
     fi
@@ -225,7 +243,7 @@ cd ${PROJECT_NAME}
 ./setup_project.sh
 
 # Start the application
-docker-compose up --build
+docker compose up --build
 \`\`\`
 
 ## Access Points
@@ -249,25 +267,25 @@ docker-compose up --build
 
 \`\`\`bash
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Access web container
-docker-compose exec web bash
+docker compose exec web bash
 
 # Run database migrations
-docker-compose exec web alembic upgrade head
+docker compose exec web alembic upgrade head
 
 # Create new migration
-docker-compose exec web alembic revision --autogenerate -m "Description"
+docker compose exec web alembic revision --autogenerate -m "Description"
 
 # Run tests (if available)
-docker-compose exec web pytest
+docker compose exec web pytest
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (clean slate)
-docker-compose down -v
+docker compose down -v
 \`\`\`
 
 ## Configuration
@@ -286,13 +304,13 @@ All project configuration is managed through:
 
 Celery tasks are processed asynchronously. Monitor them through:
 - Flower dashboard: http://localhost:${FLOWER_HOST_PORT}
-- Logs: \`docker-compose logs celery_worker\`
+- Logs: \`docker compose logs celery_worker\`
 
 ## Production Deployment
 
 \`\`\`bash
 # Use production configuration
-docker-compose -f docker-compose.prod.yml up --build
+docker compose -f docker-compose.prod.yml up --build
 \`\`\`
 
 ## API Documentation
@@ -330,7 +348,7 @@ Access Points:
 - Flower: http://localhost:${FLOWER_HOST_PORT}
 
 Next Steps:
-1. docker-compose up --build
+1. docker compose up --build
 2. Visit http://localhost:${API_HOST_PORT}/docs
 3. Customize your domain models in project/${DOMAIN_MODULE:-users}/
 
@@ -345,7 +363,7 @@ log_success "🎉 Project setup completed successfully!"
 echo ""
 log_info "📋 Next steps:"
 echo "   1. Review the configuration in project_info.txt"
-echo "   2. Start the application: docker-compose up --build"
+echo "   2. Start the application: docker compose up --build"
 echo "   3. Visit: http://localhost:${API_HOST_PORT}"
 echo "   4. API Documentation: http://localhost:${API_HOST_PORT}/docs"
 echo "   5. Flower Dashboard: http://localhost:${FLOWER_HOST_PORT}"

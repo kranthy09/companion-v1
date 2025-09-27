@@ -1,7 +1,7 @@
 """
 companion/project/notes/models.py
 
-Modern SQLAlchemy 2.0 Notes Model
+Updated Notes Model with separate AI fields
 """
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,9 +36,15 @@ class Note(Base):
 
     # Metadata
     tags: Mapped[List[str]] = mapped_column(JSON, default=list)
-    has_ai_summary: Mapped[bool] = mapped_column(Boolean, default=False)
-    ai_enhanced_content: Mapped[Optional[str]] = mapped_column(Text)
     words_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # AI Enhancement fields
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_enhanced_content: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )
+    has_ai_summary: Mapped[bool] = mapped_column(Boolean, default=False)
+    has_ai_enhancement: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

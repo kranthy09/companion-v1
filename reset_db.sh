@@ -21,7 +21,7 @@ docker compose up -d --build
 sleep 10  # Wait for DB to be ready
 
 # Generate new migration with all models
-docker compose exec web alembic revision --autogenerate -m "Initial migration with auth and user models"
+docker compose exec web alembic revision --autogenerate -m "Fresh migration Auth, User, Notes models"
 
 # Apply migration
 docker compose exec web alembic upgrade head

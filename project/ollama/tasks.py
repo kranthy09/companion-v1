@@ -1,7 +1,7 @@
 """
 companion/project/ollama/tasks.py
 
-Celery tasks with WebSocket notifications
+Celery tasks for AI enhancement with separate summary and enhance
 """
 
 import asyncio
@@ -17,8 +17,8 @@ logger = get_task_logger(__name__)
 
 
 @shared_task(bind=True, max_retries=3)
-def task_enhance_note(self, note_id: int, user_id: int, enhancement_type: str):
-    """Enhance note using Ollama"""
+def task_enhance_note(self, note_id: int, user_id: int):
+    """Enhance note (improve + expand)"""
     try:
         with db_context() as session:
             note = (
@@ -30,12 +30,14 @@ def task_enhance_note(self, note_id: int, user_id: int, enhancement_type: str):
             if not note:
                 raise ValueError("Note not found")
 
-            # Run async code in sync context
+            # Run async enhancement
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             result = loop.run_until_complete(
                 ollama_service.enhance_note(
-                    note.title, note.content, enhancement_type
+                    note.title,
+                    note.content,
+                    "improve",  # Improve and expand combined
                 )
             )
             loop.close()
@@ -43,20 +45,64 @@ def task_enhance_note(self, note_id: int, user_id: int, enhancement_type: str):
             if not result["success"]:
                 raise Exception(result.get("error", "Enhancement failed"))
 
-            # Update note
+            # Update note with enhanced content
             note.ai_enhanced_content = result["enhanced_content"]
+            note.has_ai_enhancement = True
+            session.commit()
+
+            return {
+                "note_id": note_id,
+                "success": True,
+                "type": "enhance",
+                "enhanced_content": result["enhanced_content"],
+            }
+
+    except Exception as e:
+        logger.error(f"Enhancement task failed: {e}")
+        raise self.retry(exc=e, countdown=5)
+
+
+@shared_task(bind=True, max_retries=3)
+def task_summarize_note(self, note_id: int, user_id: int):
+    """Summarize note"""
+    try:
+        with db_context() as session:
+            note = (
+                session.query(Note)
+                .filter(Note.id == note_id, Note.user_id == user_id)
+                .first()
+            )
+
+            if not note:
+                raise ValueError("Note not found")
+
+            # Run async summary
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(
+                ollama_service.enhance_note(
+                    note.title, note.content, "summary"
+                )
+            )
+            loop.close()
+
+            if not result["success"]:
+                raise Exception(result.get("error", "Summary failed"))
+
+            # Update note with summary
+            note.ai_summary = result["enhanced_content"]
             note.has_ai_summary = True
             session.commit()
 
             return {
                 "note_id": note_id,
-                "enhanced_content": result["enhanced_content"],
                 "success": True,
-                "enhancement_type": enhancement_type,
+                "type": "summary",
+                "summary": result["enhanced_content"],
             }
 
     except Exception as e:
-        logger.error(f"Task failed: {e}")
+        logger.error(f"Summary task failed: {e}")
         raise self.retry(exc=e, countdown=5)
 
 

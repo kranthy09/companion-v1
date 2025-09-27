@@ -19,7 +19,7 @@ services:
   db:
     image: postgres:16-alpine
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
+      - companion_postgres_data:/var/lib/postgresql/data/
     environment:
       - POSTGRES_DB=companion_db
       - POSTGRES_USER=companion_user
@@ -34,7 +34,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama
+      - companion_ollama_data:/root/.ollama
     restart: always
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -88,5 +88,5 @@ services:
       - db
 
 volumes:
-  postgres_data:
-  ollama_data:
+  companion_postgres_data:
+  companion_ollama_data:
