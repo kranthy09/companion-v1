@@ -80,12 +80,14 @@ def create_app() -> FastAPI:
     from project.users import users_router
     from project.notes import notes_router
     from project.health import health_router
+    from project.ollama import ollama_router
     from project.ws import ws_router
 
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(users_router)
     app.include_router(notes_router)
+    app.include_router(ollama_router)
     app.include_router(ws_router)
 
     # Socket.IO

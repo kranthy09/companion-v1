@@ -33,6 +33,11 @@ def get_task_info(task_id):
             "state": task.state,
             "error": error,
         }
+    elif state == "SUCCESS":
+        response = {
+            "state": task.state,
+            "result": task.result,
+        }
     else:
         response = {
             "state": task.state,

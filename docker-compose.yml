@@ -3,20 +3,18 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/fastapi/Dockerfile
-    image: comapanion_web
-    # '/start' is the shell script used to run the service
+    image: companion_web
     command: /start
-    # this volume is used to map the files and folders on the host to the container
-    # so if we change code on the host, code in the docker container will also be changed
     volumes:
       - .:/app
     ports:
       - 8010:8000
     env_file:
-      - .env/.dev-sample
+      - .env/.dev
     depends_on:
       - redis
       - db
+      - ollama
 
   db:
     image: postgres:16-alpine
@@ -30,6 +28,20 @@ services:
   redis:
     image: redis:7-alpine
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: companion_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   celery_worker:
     build:
       context: .
@@ -39,10 +51,11 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env/.dev-sample
+      - .env/.dev
     depends_on:
       - redis
       - db
+      - ollama
 
   celery_beat:
     build:
@@ -53,7 +66,7 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env/.dev-sample
+      - .env/.dev
     depends_on:
       - redis
       - db
@@ -67,7 +80,7 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env/.dev-sample
+      - .env/.dev
     ports:
       - 5557:5555
     depends_on:
@@ -76,5 +89,4 @@ services:
 
 volumes:
   postgres_data:
-
-
+  ollama_data:
