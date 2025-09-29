@@ -5,7 +5,7 @@ User App API request and response schemas with modern Pydantic v2
 """
 
 from pydantic import BaseModel, HttpUrl, ConfigDict
-from typing import Optional
+from typing import Optional, Any
 
 
 class UserProfileSchema(BaseModel):
@@ -95,3 +95,23 @@ class UserPreferencesResponse(BaseModel):
     theme: str
     language: str
     timezone: str
+
+
+class TaskStatusResponse(BaseModel):
+    state: str
+    error: Optional[str] = None
+    result: Optional[dict] = None
+    result: Optional[Any] = None  # Add result field
+
+
+class TaskQueueResponse(BaseModel):
+    task_id: str
+    message: str
+    user_info: Optional[dict] = None
+
+
+class MyTasksResponse(BaseModel):
+    user_id: int
+    email: str
+    message: str
+    tasks: list[dict]

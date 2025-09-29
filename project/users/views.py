@@ -28,6 +28,12 @@ from project.auth.dependencies import (
     get_optional_user,
 )
 from project.auth.models import User
+from project.users.schemas import (
+    UserProfileResponse,
+    TaskStatusResponse,
+    MyTasksResponse,
+)
+from project.schemas.response import success_response, APIResponse
 
 
 logger = logging.getLogger(__name__)
@@ -55,22 +61,17 @@ def form_example_post(user_body: UserBody):
     return JSONResponse({"task_id": task.task_id})
 
 
-@users_router.get("/task_status/")
-def task_status(task_id: str):
+@users_router.get(
+    "/task_status/", response_model=APIResponse[TaskStatusResponse]
+)
+def task_status(request: Request, task_id: str):
     task = AsyncResult(task_id)
-    state = task.state
-
-    if state == "FAILURE":
-        error = str(task.result)
-        response = {
-            "state": state,
-            "error": error,
-        }
-    else:
-        response = {
-            "state": state,
-        }
-    return JSONResponse(response)
+    data = TaskStatusResponse(
+        state=task.state,
+        error=str(task.result) if task.state == "FAILURE" else None,
+        result=task.result if task.state == "SUCCESS" else None,  # Add this
+    )
+    return success_response(data=data, request=request)
 
 
 @users_router.get("/form_ws/")
@@ -100,19 +101,17 @@ def webhook_test_async(current_user: User = Depends(get_optional_user)):
 
 
 # Protected endpoints (authentication required)
-@users_router.get("/profile")
-def get_user_profile(current_user: User = Depends(get_current_active_user)):
+@users_router.get("/profile", response_model=APIResponse[UserProfileResponse])
+def get_user_profile(
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+):
     """Get current user's profile information"""
-    return {
-        "id": current_user.id,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "phone": current_user.phone,
-        "is_active": current_user.is_active,
-        "is_verified": current_user.is_verified,
-        "created_at": current_user.created_at,
-        "updated_at": current_user.updated_at,
-    }
+    profile = UserProfileResponse.model_validate(current_user)
+
+    return success_response(
+        data=profile, message="Profile retrieved", request=request
+    )
 
 
 @users_router.get("/transaction_celery/")
@@ -178,27 +177,19 @@ def user_subscribe(
         }
 
 
-@users_router.get("/my-tasks/")
-def get_my_tasks(current_user: User = Depends(get_current_active_user)):
-    """Get tasks related to the current user"""
-    # This is a placeholder - you'd implement actual task tracking
-    return {
-        "user_id": str(current_user.id),
-        "email": current_user.email,
-        "message": "This would return user-specific tasks",
-        "tasks": [
-            {
-                "task_id": "example-1",
-                "status": "completed",
-                "type": "welcome_email",
-            },
-            {
-                "task_id": "example-2",
-                "status": "pending",
-                "type": "subscription",
-            },
-        ],
-    }
+@users_router.get("/my-tasks/", response_model=APIResponse[MyTasksResponse])
+def get_my_tasks(
+    request: Request, current_user: User = Depends(get_current_active_user)
+):
+    # Get recent tasks from Celery (requires task ID tracking in DB)
+    # For now, return empty
+    data = MyTasksResponse(
+        user_id=current_user.id,
+        email=current_user.email,
+        message="Task list retrieved",
+        tasks=[],
+    )
+    return success_response(data=data, request=request)
 
 
 @users_router.delete("/delete-account")
