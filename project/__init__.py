@@ -1,5 +1,5 @@
 """
-project/__init__.py - With structured logging
+project/__init__.py - Complete with performance monitoring
 """
 
 from contextlib import asynccontextmanager
@@ -47,7 +47,12 @@ def create_app() -> FastAPI:
         expose_headers=["Set-Cookie", "X-Request-ID"],
     )
 
-    # Request logging middleware (FIRST - to capture all requests)
+    # Performance monitoring (FIRST - for accurate timing)
+    from project.middleware.performance import PerformanceMiddleware
+
+    app.add_middleware(PerformanceMiddleware)
+
+    # Request logging
     from project.middleware.request_logger import RequestLoggerMiddleware
 
     app.add_middleware(RequestLoggerMiddleware)

@@ -90,10 +90,19 @@ class BaseConfig:
         },
     }
     CELERY_TASK_ROUTES = (route_task,)
+
     # Cookie Settings
+
     COOKIE_DOMAIN: Optional[str] = os.environ.get("COOKIE_DOMAIN", None)
     COOKIE_SECURE: bool = os.environ.get("FASTAPI_CONFIG") == "production"
     COOKIE_SAMESITE: str = "lax"
+
+    # Performance monitoring thresholds
+
+    SLOW_QUERY_THRESHOLD = float(os.environ.get("SLOW_QUERY_THRESHOLD", "1.0"))
+    SLOW_ENDPOINT_THRESHOLD = float(
+        os.environ.get("SLOW_ENDPOINT_THRESHOLD", "2.0")
+    )
 
 
 class DevelopmentConfig(BaseConfig):
