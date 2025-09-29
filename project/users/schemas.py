@@ -4,6 +4,7 @@ companion/project/users/schemas.py
 User App API request and response schemas with modern Pydantic v2
 """
 
+from datetime import datetime
 from pydantic import BaseModel, HttpUrl, ConfigDict
 from typing import Optional, Any
 
@@ -70,12 +71,15 @@ class UserProfileResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: int
-    bio: Optional[str]
-    avatar_url: Optional[str]
-    website: Optional[str]
-    company: Optional[str]
-    location: Optional[str]
+    email: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    phone: Optional[str]
+    full_name: str
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 # Preferences CRUD Schemas
