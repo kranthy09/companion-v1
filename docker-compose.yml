@@ -36,11 +36,18 @@ services:
     volumes:
       - companion_ollama_data:/root/.ollama
     restart: always
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "ollama serve &
+      sleep 10 &&
+      ollama pull gemma2 &&
+      wait"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 10s
       timeout: 5s
       retries: 5
+
 
   celery_worker:
     build:

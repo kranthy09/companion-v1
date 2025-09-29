@@ -7,6 +7,7 @@ from enum import Enum
 
 class ErrorCode(str, Enum):
     # Authentication (AUTH_XXX)
+    USER_NOT_FOUND = "AUTH_000"
     INVALID_CREDENTIALS = "AUTH_001"
     TOKEN_EXPIRED = "AUTH_002"
     TOKEN_INVALID = "AUTH_003"
@@ -54,6 +55,7 @@ class ErrorCode(str, Enum):
 
 # Error messages mapping
 ERROR_MESSAGES = {
+    ErrorCode.USER_NOT_FOUND: "User doesnot exists",
     ErrorCode.INVALID_CREDENTIALS: "Invalid email or password",
     ErrorCode.TOKEN_EXPIRED: "Token has expired",
     ErrorCode.TOKEN_INVALID: "Invalid token",

@@ -8,3 +8,4 @@ project/__pycache__/*
 .env/*
 .env/.dev
 .env/.dev-sample
+cookies.txt

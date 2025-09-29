@@ -1,12 +1,14 @@
 """
-project/auth/views.py - Enhanced with token rotation
+project/auth/views.py - Authentication endpoints
 """
 
+import secrets
+import logging
 from datetime import datetime
-from fastapi import Response, Request, Depends
+from fastapi import Response, Request, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from jose import jwt
 
 from . import auth_router
 from project.config import settings
@@ -17,193 +19,174 @@ from project.auth.utils import (
     verify_password,
     get_password_hash,
     create_token_pair,
-    verify_token,
     blacklist_token,
 )
 from project.auth.dependencies import get_current_active_user
 from project.schemas.response import (
+    APIResponse,
     success_response,
     error_response,
-    APIResponse,
 )
-from project.schemas.errors import ErrorCode, ERROR_MESSAGES
+
+logger = logging.getLogger(__name__)
 
 
-class RefreshRequest(BaseModel):
-    refresh_token: str
+def set_auth_cookies(response: Response, access_token: str, csrf_token: str):
+    """Helper to set auth cookies"""
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=settings.COOKIE_DOMAIN,
+    )
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+        domain=settings.COOKIE_DOMAIN,
+    )
 
 
 @auth_router.post("/register", response_model=APIResponse[AuthResponse])
 def register(
+    request: Request,
     response: Response,
     user_data: UserCreate,
     session: Session = Depends(get_db_session),
 ):
     """Register new user"""
-    if session.query(User).filter(User.email == user_data.email).first():
-        return error_response(
-            code=ErrorCode.VALIDATION_ERROR, message="Email already registered"
+    try:
+        existing = (
+            session.query(User).filter(User.email == user_data.email).first()
+        )
+        if existing:
+            logger.warning(
+                f"Registration attempt with existing email: {user_data.email}"
+            )
+            return error_response("Email already registered", request=request)
+
+        user = User(
+            email=user_data.email,
+            hashed_password=get_password_hash(user_data.password),
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
+            phone=user_data.phone,
         )
 
-    user = User(
-        email=user_data.email,
-        hashed_password=get_password_hash(user_data.password),
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        phone=user_data.phone,
-    )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
 
-    session.add(user)
-    session.commit()
-    session.refresh(user)
+        tokens = create_token_pair(user.email)
+        csrf_token = secrets.token_urlsafe(32)
 
-    tokens = create_token_pair(user.email)
+        set_auth_cookies(response, tokens["access_token"], csrf_token)
 
-    # Set HTTP-only cookie
-    response.set_cookie(
-        key="access_token",
-        value=tokens["access_token"],
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        domain=settings.COOKIE_DOMAIN,
-    )
+        logger.info(f"User registered successfully: {user.email}")
 
-    return success_response(
-        data=AuthResponse(
-            user=UserRead.model_validate(user), token=Token(**tokens)
-        ),
-        message="Registration successful",
-    )
+        return success_response(
+            data=AuthResponse(
+                user=UserRead.model_validate(user),
+                token=Token(
+                    access_token=tokens["access_token"],
+                    refresh_token=tokens["refresh_token"],
+                ),
+            ),
+            message="Registration successful",
+        )
+    except Exception as e:
+        logger.error(f"Registration failed: {str(e)}")
+        session.rollback()
+        raise HTTPException(500, "Registration failed")
 
 
 @auth_router.post("/login", response_model=APIResponse[Token])
 def login(
+    request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_db_session),
 ):
-    """Login with token rotation"""
-    user = session.query(User).filter(User.email == form_data.username).first()
-
-    if not user or not verify_password(
-        form_data.password, user.hashed_password
-    ):
-        return error_response(
-            code=ErrorCode.INVALID_CREDENTIALS,
-            message=ERROR_MESSAGES[ErrorCode.INVALID_CREDENTIALS],
-        )
-
-    if not user.is_active:
-        return error_response(
-            code=ErrorCode.ACCOUNT_INACTIVE,
-            message=ERROR_MESSAGES[ErrorCode.ACCOUNT_INACTIVE],
-        )
-
-    tokens = create_token_pair(user.email)
-
-    # Set HTTP-only cookie
-    response.set_cookie(
-        key="access_token",
-        value=tokens["access_token"],
-        httponly=True,
-        secure=settings.COOKIE_SECURE,
-        samesite=settings.COOKIE_SAMESITE,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        domain=settings.COOKIE_DOMAIN,
-    )
-
-    return success_response(data=Token(**tokens), message="Login successful")
-
-
-@auth_router.post("/refresh", response_model=APIResponse[Token])
-def refresh_token(
-    response: Response,
-    refresh_req: RefreshRequest,
-    session: Session = Depends(get_db_session),
-):
-    """Refresh access token with rotation"""
+    """Login with credentials"""
     try:
-        payload = verify_token(refresh_req.refresh_token, token_type="refresh")
-        email = payload.get("sub")
-
-        user = session.query(User).filter(User.email == email).first()
-        if not user or not user.is_active:
-            return error_response(
-                code=ErrorCode.TOKEN_INVALID, message="Invalid refresh token"
-            )
-
-        # Blacklist old refresh token (rotation)
-        exp = datetime.fromtimestamp(payload["exp"])
-        blacklist_token(refresh_req.refresh_token, exp)
-
-        # Issue new token pair
-        tokens = create_token_pair(user.email)
-
-        # Update cookie
-        response.set_cookie(
-            key="access_token",
-            value=tokens["access_token"],
-            httponly=True,
-            secure=settings.COOKIE_SECURE,
-            samesite=settings.COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            domain=settings.COOKIE_DOMAIN,
+        user = (
+            session.query(User)
+            .filter(User.email == form_data.username)
+            .first()
         )
+
+        if not user or not verify_password(
+            form_data.password, user.hashed_password
+        ):
+            logger.warning(f"Failed login attempt: {form_data.username}")
+            return error_response("Invalid credentials", request=request)
+
+        if not user.is_active:
+            logger.warning(f"Inactive user login attempt: {user.email}")
+            return error_response("Account is inactive", request=request)
+
+        tokens = create_token_pair(user.email)
+        csrf_token = secrets.token_urlsafe(32)
+
+        set_auth_cookies(response, tokens["access_token"], csrf_token)
+
+        logger.info(f"User logged in: {user.email}")
 
         return success_response(
-            data=Token(**tokens), message="Token refreshed"
+            data=Token(
+                access_token=tokens["access_token"],
+                refresh_token=tokens["refresh_token"],
+            ),
+            message="Login successful",
         )
-
-    except Exception:
-        return error_response(
-            code=ErrorCode.TOKEN_INVALID, message="Token refresh failed"
-        )
+    except Exception as e:
+        logger.error(f"Login failed: {str(e)}")
+        raise HTTPException(500, "Login failed")
 
 
-@auth_router.post("/logout")
+@auth_router.post("/logout", response_model=APIResponse[dict])
 def logout(
     request: Request,
     response: Response,
     current_user: User = Depends(get_current_active_user),
 ):
     """Logout and revoke token"""
-    auth_header = request.headers.get("Authorization")
+    try:
+        # Try to get token from cookie or header
+        token = request.cookies.get("access_token")
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header:
+                token = auth_header.split(" ")[1]
 
-    if auth_header:
-        token = auth_header.split(" ")[1]
-        from jose import jwt
+        if token:
+            payload = jwt.decode(
+                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            )
+            exp = datetime.fromtimestamp(payload["exp"])
+            blacklist_token(token, exp)
 
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        response.delete_cookie(
+            key="access_token", path="/", domain=settings.COOKIE_DOMAIN
         )
-        exp = datetime.fromtimestamp(payload["exp"])
-        blacklist_token(token, exp)
+        response.delete_cookie(
+            key="csrf_token", path="/", domain=settings.COOKIE_DOMAIN
+        )
 
-    # Clear cookie
-    response.delete_cookie(key="access_token", domain=settings.COOKIE_DOMAIN)
+        logger.info(f"User logged out: {current_user.email}")
 
-    return success_response(message="Logged out successfully")
-
-
-@auth_router.get("/session", response_model=APIResponse[dict])
-def get_session(request: Request, session: Session = Depends(get_db_session)):
-    """Check authentication status (for middleware)"""
-    from project.auth.dependencies import get_optional_user
-
-    user = get_optional_user(session=session)
-
-    if not user:
-        return success_response(data={"authenticated": False})
-
-    return success_response(
-        data={
-            "authenticated": True,
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "full_name": user.full_name,
-            },
-        }
-    )
+        return success_response(
+            data={"logged_out": True},
+            message="Logged out successfully",
+        )
+    except Exception as e:
+        logger.error(f"Logout failed: {str(e)}")
+        raise HTTPException(500, "Logout failed")

@@ -18,8 +18,8 @@ async def csrf_middleware(request: Request, call_next):
 
     # Skip CSRF for auth endpoints (login/register set the token)
     if request.url.path.startswith(
-        "/auth/login"
-    ) or request.url.path.startswith("/auth/register"):
+        "/api/v1/auth/login"
+    ) or request.url.path.startswith("/api/v1/auth/register"):
         return await call_next(request)
 
     # Get tokens
