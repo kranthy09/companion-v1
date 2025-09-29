@@ -9,6 +9,7 @@ import pathlib
 from typing import Optional
 from functools import lru_cache
 from kombu import Queue
+from celery.schedules import crontab
 
 
 def route_task(name, args, kwargs, options, task=None, **kw):
@@ -103,6 +104,23 @@ class BaseConfig:
     SLOW_ENDPOINT_THRESHOLD = float(
         os.environ.get("SLOW_ENDPOINT_THRESHOLD", "2.0")
     )
+    # Add to project/config.py in BaseConfig class
+
+    CELERY_BEAT_SCHEDULE: dict = {
+        "cleanup-old-tasks": {
+            "task": "cleanup_old_tasks",
+            "schedule": crontab(hour=2, minute=0),  # Daily at 2 AM
+            "args": (7,),  # Keep tasks for 7 days
+        },
+        # Optional: Weekly cleanup with longer retention
+        "weekly-deep-cleanup": {
+            "task": "cleanup_old_tasks",
+            "schedule": crontab(
+                day_of_week=0, hour=3, minute=0
+            ),  # Sunday 3 AM
+            "args": (30,),  # Cleanup tasks older than 30 days
+        },
+    }
 
 
 class DevelopmentConfig(BaseConfig):

@@ -1,7 +1,7 @@
 """
 companion/project/auth/models.py
 
-Modern SQLAlchemy 2.0 User Model
+Modern SQLAlchemy 2.0 User Model with all relationships
 """
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -13,6 +13,8 @@ from project.database import Base
 
 if TYPE_CHECKING:
     from project.notes.models import Note
+    from project.users.models import UserProfile, UserPreferences, UserActivity
+    from project.tasks.models import TaskMetadata
 
 
 class User(Base):
@@ -43,17 +45,35 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Relationships
+    notes: Mapped[List["Note"]] = relationship(
+        "Note", back_populates="user", cascade="all, delete-orphan"
+    )
+    profile: Mapped[Optional["UserProfile"]] = relationship(
+        "UserProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    preferences: Mapped[Optional["UserPreferences"]] = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    activities: Mapped[List["UserActivity"]] = relationship(
+        "UserActivity", back_populates="user", cascade="all, delete-orphan"
+    )
+    tasks: Mapped[List["TaskMetadata"]] = relationship(
+        "TaskMetadata", back_populates="user", cascade="all, delete-orphan"
+    )
+
     @property
     def full_name(self) -> str:
         """Get user's full name"""
         if self.first_name and self.last_name:
             return f"{self.first_name} {self.last_name}"
         return self.first_name or self.last_name or self.email
-
-    # Relationships
-    notes: Mapped[List["Note"]] = relationship(
-        "Note", back_populates="user", cascade="all, delete-orphan"
-    )
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email='{self.email}')>"

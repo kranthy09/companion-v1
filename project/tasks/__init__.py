@@ -6,4 +6,5 @@ from fastapi import APIRouter
 
 tasks_router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
-from . import views, models  # noqa
+# Import all modules to register tasks
+from . import views, models, tasks  # noqa

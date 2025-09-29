@@ -14,6 +14,23 @@ from project.celery_utils import get_task_info
 from project.config import settings
 
 
+def parse_cookies(cookie_header: str) -> dict:
+    """Safely parse cookie header"""
+    cookies = {}
+    if not cookie_header:
+        return cookies
+
+    try:
+        for item in cookie_header.split("; "):
+            if "=" in item:
+                key, value = item.split("=", 1)
+                cookies[key] = value
+    except Exception:
+        pass  # Return empty dict on any parse error
+
+    return cookies
+
+
 @ws_router.websocket("/ws/task_status/{task_id}")
 async def ws_task_status(
     websocket: WebSocket, task_id: str, token: str = Query(None)
@@ -23,15 +40,7 @@ async def ws_task_status(
     # Try query param first, fallback to cookie
     if not token:
         cookie_header = websocket.headers.get("cookie", "")
-        cookies = (
-            dict(
-                item.split("=", 1)
-                for item in cookie_header.split("; ")
-                if "=" in item
-            )
-            if cookie_header
-            else {}
-        )
+        cookies = parse_cookies(cookie_header)
         token = cookies.get("access_token")
 
     if not token:
@@ -83,15 +92,7 @@ class TaskStatusNameSpace(AsyncNamespace):
         # Validate token from cookies
         environ = self.get_environ(sid)
         cookie_header = environ.get("HTTP_COOKIE", "")
-        cookies = (
-            dict(
-                item.split("=", 1)
-                for item in cookie_header.split("; ")
-                if "=" in item
-            )
-            if cookie_header
-            else {}
-        )
+        cookies = parse_cookies(cookie_header)
 
         token = cookies.get("access_token")
 
