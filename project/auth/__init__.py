@@ -1,10 +1,9 @@
 """
-companion/project/auth/__init__.py
-Auth App, imports auth_router
+project/auth/__init__.py
 """
 
-# Import the auth router
-from .views import auth_router
+from fastapi import APIRouter
 
-# Export for easy import
-__all__ = ["auth_router"]
+auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+from . import views, models, utils  # noqa

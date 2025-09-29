@@ -1,7 +1,5 @@
 """
-companion/project/ollama/views.py
-
-Complete endpoints: background + streaming
+project/ollama/views.py - Enhanced with task metadata creation
 """
 
 from fastapi import Depends, HTTPException, Request
@@ -20,12 +18,12 @@ from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.database import get_db_session
 from project.notes.models import Note
-from project.schemas.response import APIResponse, success_response
-from project.ollama.schemas import (
-    HealthCheckResponse,
-    TaskResponse,
-    TaskStatusResponse,
+from project.tasks.service import TaskService
+from project.schemas.response import (
+    APIResponse,
+    success_response,
 )
+from project.ollama.schemas import HealthCheckResponse, TaskResponse
 
 
 class NoteRequest(BaseModel):
@@ -34,14 +32,14 @@ class NoteRequest(BaseModel):
 
 @ollama_router.get("/health", response_model=APIResponse[HealthCheckResponse])
 async def check_health(request: Request):
+    """Check Ollama availability"""
     available = await ollama_service.health_check()
-    data = HealthCheckResponse(
-        status="healthy" if available else "unavailable", available=available
+    return success_response(
+        data=HealthCheckResponse(
+            status="healthy" if available else "unavailable",
+            available=available,
+        )
     )
-    return success_response(data=data, request=request)
-
-
-# ============= Background Tasks (No Streaming) =============
 
 
 @ollama_router.post("/enhance", response_model=APIResponse[TaskResponse])
@@ -51,6 +49,7 @@ def enhance_note(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """Enhance note (background)"""
     note = (
         db.query(Note)
         .filter(
@@ -58,17 +57,32 @@ def enhance_note(
         )
         .first()
     )
+
     if not note:
         raise HTTPException(404, "Note not found")
 
+    # Queue Celery task
     task = task_enhance_note.delay(note_request.note_id, current_user.id)
-    data = TaskResponse(
+
+    # Create task metadata
+    task_service = TaskService(db)
+    task_service.create_task(
         task_id=task.id,
-        note_id=note_request.note_id,
-        streaming=False,
-        message="Enhancement queued",
+        user_id=current_user.id,
+        task_type="enhance",
+        task_name=f"Enhance: {note.title[:50]}",
+        resource_type="note",
+        resource_id=note.id,
     )
-    return success_response(data=data, request=request_obj)
+
+    return success_response(
+        data=TaskResponse(
+            task_id=task.id,
+            note_id=note_request.note_id,
+            streaming=False,
+            message="Enhancement queued",
+        )
+    )
 
 
 @ollama_router.post("/summarize", response_model=APIResponse[TaskResponse])
@@ -78,6 +92,7 @@ def summarize_note(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """Summarize note (background)"""
     note = (
         db.query(Note)
         .filter(
@@ -85,20 +100,30 @@ def summarize_note(
         )
         .first()
     )
+
     if not note:
         raise HTTPException(404, "Note not found")
 
     task = task_summarize_note.delay(note_request.note_id, current_user.id)
-    data = TaskResponse(
+
+    task_service = TaskService(db)
+    task_service.create_task(
         task_id=task.id,
-        note_id=note_request.note_id,
-        streaming=False,
-        message="Summary queued",
+        user_id=current_user.id,
+        task_type="summarize",
+        task_name=f"Summarize: {note.title[:50]}",
+        resource_type="note",
+        resource_id=note.id,
     )
-    return success_response(data=data, request=request_obj)
 
-
-# ============= Streaming Tasks =============
+    return success_response(
+        data=TaskResponse(
+            task_id=task.id,
+            note_id=note_request.note_id,
+            streaming=False,
+            message="Summary queued",
+        )
+    )
 
 
 @ollama_router.post(
@@ -110,6 +135,7 @@ def enhance_note_streaming(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """Enhance note with streaming"""
     note = (
         db.query(Note)
         .filter(
@@ -117,21 +143,34 @@ def enhance_note_streaming(
         )
         .first()
     )
+
     if not note:
         raise HTTPException(404, "Note not found")
 
     task = task_stream_enhance_note.delay(
         note_request.note_id, current_user.id
     )
-    data = TaskResponse(
+
+    task_service = TaskService(db)
+    task_service.create_task(
         task_id=task.id,
-        note_id=note_request.note_id,
-        streaming=True,
-        message="Enhancement started with streaming",
-        stream_channel=f"stream:{task.id}",
-        ws_url=f"/ollama/ws/stream/{task.id}",
+        user_id=current_user.id,
+        task_type="enhance_stream",
+        task_name=f"Stream Enhance: {note.title[:50]}",
+        resource_type="note",
+        resource_id=note.id,
     )
-    return success_response(data=data, request=request_obj)
+
+    return success_response(
+        data=TaskResponse(
+            task_id=task.id,
+            note_id=note_request.note_id,
+            streaming=True,
+            message="Enhancement started with streaming",
+            stream_channel=f"stream:{task.id}",
+            ws_url=f"/ollama/ws/stream/{task.id}",
+        )
+    )
 
 
 @ollama_router.post(
@@ -143,6 +182,7 @@ def summarize_note_streaming(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """Summarize note with streaming"""
     note = (
         db.query(Note)
         .filter(
@@ -150,33 +190,31 @@ def summarize_note_streaming(
         )
         .first()
     )
+
     if not note:
         raise HTTPException(404, "Note not found")
 
     task = task_stream_summarize_note.delay(
         note_request.note_id, current_user.id
     )
-    data = TaskResponse(
+
+    task_service = TaskService(db)
+    task_service.create_task(
         task_id=task.id,
-        note_id=note_request.note_id,
-        streaming=True,
-        message="Summary started with streaming",
-        stream_channel=f"stream:{task.id}",
-        ws_url=f"/ollama/ws/stream/{task.id}",
+        user_id=current_user.id,
+        task_type="summarize_stream",
+        task_name=f"Stream Summary: {note.title[:50]}",
+        resource_type="note",
+        resource_id=note.id,
     )
-    return success_response(data=data, request=request_obj)
 
-
-@ollama_router.get(
-    "/task/{task_id}", response_model=APIResponse[TaskStatusResponse]
-)
-def get_task_status(
-    request: Request,
-    task_id: str,
-    current_user: User = Depends(get_current_user),
-):
-    from project.celery_utils import get_task_info
-
-    info = get_task_info(task_id)
-    data = TaskStatusResponse(**info)
-    return success_response(data=data, request=request)
+    return success_response(
+        data=TaskResponse(
+            task_id=task.id,
+            note_id=note_request.note_id,
+            streaming=True,
+            message="Summary started with streaming",
+            stream_channel=f"stream:{task.id}",
+            ws_url=f"/ollama/ws/stream/{task.id}",
+        )
+    )

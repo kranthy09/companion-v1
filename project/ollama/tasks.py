@@ -1,15 +1,14 @@
 """
-companion/project/ollama/tasks.py
-
-Celery tasks with streaming support
+project/ollama/tasks.py - Enhanced with task metadata tracking
 """
 
 import asyncio
 import json
 from celery import shared_task
-from celery.signals import task_postrun
+from celery.signals import task_prerun, task_postrun, task_failure
 from celery.utils.log import get_task_logger
 from asgiref.sync import async_to_sync
+
 from project.database import db_context
 from project.notes.models import Note
 from project.ollama.service import ollama_service
@@ -19,9 +18,53 @@ from project import broadcast
 logger = get_task_logger(__name__)
 
 
+@task_prerun.connect
+def task_prerun_handler(task_id, task, args, kwargs, **extra):
+    """Mark task as running when it starts"""
+    from project.tasks.service import TaskService
+
+    with db_context() as session:
+        service = TaskService(session)
+        service.update_task_status(task_id, "running")
+
+
+@task_postrun.connect
+def task_postrun_handler(task_id, task, args, kwargs, retval, **extra):
+    """Update task metadata and broadcast status"""
+    from project.tasks.service import TaskService
+    from project.ws.views import (
+        update_celery_task_status,
+        update_celery_task_status_socketio,
+    )
+
+    with db_context() as session:
+        service = TaskService(session)
+        service.update_task_status(
+            task_id,
+            "success",
+            result=(
+                retval if isinstance(retval, dict) else {"result": str(retval)}
+            ),
+        )
+
+    # Broadcast via WebSocket
+    async_to_sync(update_celery_task_status)(task_id)
+    update_celery_task_status_socketio(task_id)
+
+
+@task_failure.connect
+def task_failure_handler(task_id, exception, traceback, **extra):
+    """Mark task as failed"""
+    from project.tasks.service import TaskService
+
+    with db_context() as session:
+        service = TaskService(session)
+        service.update_task_status(task_id, "failed", error=str(exception))
+
+
 @shared_task(bind=True, max_retries=3)
 def task_enhance_note(self, note_id: int, user_id: int):
-    """Enhance note (non-streaming background task)"""
+    """Enhance note (background task)"""
     try:
         with db_context() as session:
             note = (
@@ -33,8 +76,14 @@ def task_enhance_note(self, note_id: int, user_id: int):
             if not note:
                 raise ValueError("Note not found")
 
+            # Check Ollama availability
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+
+            available = loop.run_until_complete(ollama_service.health_check())
+            if not available:
+                raise Exception("Ollama service unavailable")
+
             result = loop.run_until_complete(
                 ollama_service.enhance_note(
                     note.title, note.content, "improve"
@@ -53,17 +102,17 @@ def task_enhance_note(self, note_id: int, user_id: int):
                 "note_id": note_id,
                 "success": True,
                 "type": "enhance",
-                "enhanced_content": result["enhanced_content"],
+                "content_length": len(result["enhanced_content"]),
             }
 
     except Exception as e:
-        logger.error(f"Enhancement task failed: {e}")
-        raise self.retry(exc=e, countdown=5)
+        logger.error(f"Enhancement failed: {e}")
+        raise self.retry(exc=e, countdown=60)
 
 
 @shared_task(bind=True, max_retries=3)
 def task_summarize_note(self, note_id: int, user_id: int):
-    """Summarize note (non-streaming background task)"""
+    """Summarize note (background task)"""
     try:
         with db_context() as session:
             note = (
@@ -77,6 +126,11 @@ def task_summarize_note(self, note_id: int, user_id: int):
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+
+            available = loop.run_until_complete(ollama_service.health_check())
+            if not available:
+                raise Exception("Ollama service unavailable")
+
             result = loop.run_until_complete(
                 ollama_service.enhance_note(
                     note.title, note.content, "summary"
@@ -95,17 +149,17 @@ def task_summarize_note(self, note_id: int, user_id: int):
                 "note_id": note_id,
                 "success": True,
                 "type": "summary",
-                "summary": result["enhanced_content"],
+                "summary_length": len(result["enhanced_content"]),
             }
 
     except Exception as e:
-        logger.error(f"Summary task failed: {e}")
-        raise self.retry(exc=e, countdown=5)
+        logger.error(f"Summary failed: {e}")
+        raise self.retry(exc=e, countdown=60)
 
 
 @shared_task(bind=True, max_retries=3)
 def task_stream_enhance_note(self, note_id: int, user_id: int):
-    """Enhance note WITH streaming via WebSocket"""
+    """Enhance note WITH streaming"""
     task_id = self.request.id
 
     try:
@@ -132,7 +186,6 @@ def task_stream_enhance_note(self, note_id: int, user_id: int):
                     note.title, note.content, "improve"
                 ):
                     full_text += chunk
-                    # Publish each chunk
                     await broadcast.publish(
                         channel=f"stream:{task_id}",
                         message=json.dumps(
@@ -158,16 +211,20 @@ def task_stream_enhance_note(self, note_id: int, user_id: int):
             note.has_ai_enhancement = True
             session.commit()
 
-            return {"note_id": note_id, "success": True, "content": full_text}
+            return {
+                "note_id": note_id,
+                "success": True,
+                "content_length": len(full_text),
+            }
 
     except Exception as e:
         logger.error(f"Stream enhancement failed: {e}")
-        raise self.retry(exc=e, countdown=5)
+        raise self.retry(exc=e, countdown=60)
 
 
 @shared_task(bind=True, max_retries=3)
 def task_stream_summarize_note(self, note_id: int, user_id: int):
-    """Summarize note WITH streaming via WebSocket"""
+    """Summarize note WITH streaming"""
     task_id = self.request.id
 
     try:
@@ -194,7 +251,6 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
                     note.title, note.content, "summary"
                 ):
                     full_text += chunk
-                    # Publish each chunk
                     await broadcast.publish(
                         channel=f"stream:{task_id}",
                         message=json.dumps(
@@ -202,7 +258,6 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
                         ),
                     )
 
-                # Final message
                 await broadcast.publish(
                     channel=f"stream:{task_id}",
                     message=json.dumps(
@@ -220,20 +275,12 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
             note.has_ai_summary = True
             session.commit()
 
-            return {"note_id": note_id, "success": True, "summary": full_text}
+            return {
+                "note_id": note_id,
+                "success": True,
+                "summary_length": len(full_text),
+            }
 
     except Exception as e:
         logger.error(f"Stream summary failed: {e}")
-        raise self.retry(exc=e, countdown=5)
-
-
-@task_postrun.connect
-def ollama_task_postrun_handler(task_id, **kwargs):
-    """Send WebSocket update when task completes"""
-    from project.ws.views import (
-        update_celery_task_status,
-        update_celery_task_status_socketio,
-    )
-
-    async_to_sync(update_celery_task_status)(task_id)
-    update_celery_task_status_socketio(task_id)
+        raise self.retry(exc=e, countdown=60)

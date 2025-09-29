@@ -1,63 +1,83 @@
-from typing import Any, Dict, List, Optional, TypeVar, Generic
-from fastapi import HTTPException, status, Request
-from pydantic import BaseModel
-from functools import wraps
-from fastapi import Response
+"""
+project/schemas/response.py - Standardized API responses
+"""
 
+from typing import Any, Dict, Optional, TypeVar, Generic
+from pydantic import BaseModel
+from datetime import datetime
 
 T = TypeVar("T")
 
 
 class APIResponse(BaseModel, Generic[T]):
-    """Standardized API response"""
+    """Universal API response wrapper"""
 
     success: bool
     data: Optional[T] = None
     message: Optional[str] = None
-    error: Optional[str] = None
+    error: Optional[Dict[str, Any]] = None
     meta: Optional[Dict[str, Any]] = None
+    timestamp: str = datetime.utcnow().isoformat()
 
 
-# Response utilities
+class ErrorDetail(BaseModel):
+    """Error structure"""
+
+    code: str
+    message: str
+    field: Optional[str] = None
 
 
 def success_response(
-    data: Any = None, message: str = None, request: Request = None
-) -> dict:
-    """Auto-serialize Pydantic models"""
-    # Convert Pydantic model to dict
-    if isinstance(data, BaseModel):
-        data = data.model_dump()
-    elif isinstance(data, list) and data and isinstance(data[0], BaseModel):
-        data = [item.model_dump() for item in data]
+    data: Any = None,
+    message: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict:
+    """Success response builder"""
+    response = {"success": True, "timestamp": datetime.utcnow().isoformat()}
 
-    return {
-        "success": True,
-        "data": data,
-        "message": message,
-        "request_id": (
-            getattr(request.state, "request_id", None) if request else None
-        ),
-    }
+    if data is not None:
+        # Auto-serialize Pydantic models
+        if isinstance(data, BaseModel):
+            response["data"] = data.model_dump()
+        elif (
+            isinstance(data, list) and data and isinstance(data[0], BaseModel)
+        ):
+            response["data"] = [item.model_dump() for item in data]
+        else:
+            response["data"] = data
 
-
-def error_response(error: str, meta: Optional[Dict[str, Any]] = None) -> Dict:
-    """Create a standardized error response"""
-    response = {"success": False, "error": error}
+    if message:
+        response["message"] = message
     if meta:
         response["meta"] = meta
+
     return response
 
 
+def error_response(
+    code: str,
+    message: str,
+    field: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict:
+    """Error response builder"""
+    return {
+        "success": False,
+        "error": {"code": code, "message": message, "field": field},
+        "meta": meta,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
 def paginated_response(
-    items: List[Any],
+    items: list,
     total: int,
     page: int,
     page_size: int,
     message: Optional[str] = None,
 ) -> Dict:
-    """Create a standardized paginated response"""
-    total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+    """Paginated response builder"""
     return success_response(
         data=items,
         message=message,
@@ -66,56 +86,7 @@ def paginated_response(
                 "page": page,
                 "page_size": page_size,
                 "total": total,
-                "total_pages": total_pages,
+                "total_pages": (total + page_size - 1) // page_size,
             }
         },
     )
-
-
-# Error raising helpers
-def raise_not_found(resource: str, resource_id: Optional[Any] = None) -> None:
-    """Raise a standardized not found error"""
-    detail = f"{resource} not found"
-    if resource_id is not None:
-        detail = f"{resource} with id {resource_id} not found"
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
-
-
-def raise_bad_request(detail: str = "Bad request") -> None:
-    """Raise a standardized bad request error"""
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
-
-
-def raise_unauthorized(detail: str = "Not authenticated") -> None:
-    """Raise a standardized unauthorized error"""
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=detail,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-
-def raise_forbidden(detail: str = "Not authorized") -> None:
-    """Raise a standardized forbidden error"""
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
-
-
-def api_response(func):
-    """Decorator to standardize endpoint responses"""
-
-    @wraps(func)
-    async def wrapper(*args, **kwargs):
-        result = await func(*args, **kwargs) if callable(func) else func
-
-        # If already a Response object, return as is
-        if isinstance(result, Response):
-            return result
-
-        # If already formatted as our response, return as is
-        if isinstance(result, dict) and "success" in result:
-            return result
-
-        # Wrap the result in our standard format
-        return success_response(data=result)
-
-    return wrapper
