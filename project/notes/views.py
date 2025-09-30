@@ -30,7 +30,7 @@ from project.database import get_db_session
     "/", response_model=NoteResponse, status_code=status.HTTP_201_CREATED
 )
 def create_note(
-    note_data: NoteCreate,
+    note_data: NoteCreate,  
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):

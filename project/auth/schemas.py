@@ -9,6 +9,17 @@ from typing import Optional
 from datetime import datetime
 
 
+class LoginRequest(BaseModel):
+    username: EmailStr
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
 class UserCreate(BaseModel):
     """Schema for creating a new user"""
 
