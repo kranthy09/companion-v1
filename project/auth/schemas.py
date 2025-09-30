@@ -69,6 +69,14 @@ class UserRead(BaseModel):
         return self.first_name or self.last_name or ""
 
 
+class SessionResponse(BaseModel):
+    authenticated: bool
+    user: UserRead | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class Token(BaseModel):
     """Token response schema"""
 

@@ -21,6 +21,7 @@ from project.auth.schemas import (
     AuthResponse,
     LoginRequest,
     LoginResponse,
+    SessionResponse,
 )
 from project.auth.utils import (
     verify_password,
@@ -107,7 +108,6 @@ def register(
                 ),
             ),
             message="Registration successful",
-            request=request,
         )
     except HTTPException:
         raise
@@ -184,6 +184,21 @@ def token_for_swagger(
     return Token(
         access_token=tokens["access_token"],
         refresh_token=tokens["refresh_token"],
+    )
+
+
+@auth_router.get("/session", response_model=APIResponse[SessionResponse])
+def get_session(
+    request: Request,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get current session"""
+    return success_response(
+        data=SessionResponse(
+            authenticated=True,
+            user=UserRead.model_validate(current_user),
+        ),
+        message="Session active",
     )
 
 
