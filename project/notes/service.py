@@ -4,6 +4,7 @@ companion/project/notes/service.py
 Notes App, NoteService for note management in backend
 """
 
+import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc, asc
@@ -11,6 +12,8 @@ from datetime import datetime
 
 from .models import Note
 from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
+
+logger = logging.getLogger(__name__)
 
 
 class NoteService:
@@ -32,10 +35,17 @@ class NoteService:
             tags=note_data.tags,
             words_count=word_count,
         )
-        self.db.add(note)
-        self.db.commit()
-        self.db.refresh(note)
-        return note
+        try:
+            self.db.add(note)
+            self.db.commit()
+            self.db.refresh(note)
+            return note
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to create note: {e}")
+            raise
+        finally:
+            self.db.close()
 
     def get_note_by_id(self, note_id: int, user_id: int) -> Optional[Note]:
         """Get a specific note by ID for a user"""

@@ -7,28 +7,12 @@ import socketio
 from fastapi import FastAPI, WebSocket, Query, WebSocketDisconnect
 from socketio.asyncio_namespace import AsyncNamespace
 
+from project.ws.utils import parse_cookies
 from project.auth.utils import verify_token
 from . import ws_router
 from project import broadcast
 from project.celery_utils import get_task_info
 from project.config import settings
-
-
-def parse_cookies(cookie_header: str) -> dict:
-    """Safely parse cookie header"""
-    cookies = {}
-    if not cookie_header:
-        return cookies
-
-    try:
-        for item in cookie_header.split("; "):
-            if "=" in item:
-                key, value = item.split("=", 1)
-                cookies[key] = value
-    except Exception:
-        pass  # Return empty dict on any parse error
-
-    return cookies
 
 
 @ws_router.websocket("/ws/task_status/{task_id}")

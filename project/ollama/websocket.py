@@ -4,10 +4,12 @@ companion/project/ollama/websocket.py
 WebSocket endpoint for streaming
 """
 
+import json
 from fastapi import WebSocket
+
+from project.ws.utils import parse_cookies
 from . import ollama_router
 from project import broadcast
-import json
 
 
 @ollama_router.websocket("/ws/stream/{task_id}")
@@ -16,12 +18,7 @@ async def ws_ollama_stream(websocket: WebSocket):
     cookie_header = websocket.headers.get("cookie", "")
     cookies = {}
     if cookie_header:
-        cookies = dict(
-            item.split("=", 1)
-            for item in cookie_header.split("; ")
-            if "=" in item
-        )
-
+        cookies = parse_cookies(cookie_header=cookie_header)
     token = cookies.get("access_token")
 
     if not token:
