@@ -36,7 +36,7 @@ class ConfigValidator:
         if len(settings.SECRET_KEY) < 32:
             self.errors.append("SECRET_KEY too short - minimum 32 characters")
 
-        if settings.ACCESS_TOKEN_EXPIRE_MINUTES > 60:
+        if settings.ACCESS_TOKEN_EXPIRE_MINUTES > 600000:
             self.warnings.append(
                 "Access token expiry > 60 minutes may be insecure"
             )

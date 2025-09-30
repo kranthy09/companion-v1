@@ -21,6 +21,8 @@ def route_task(name, args, kwargs, options, task=None, **kw):
 
 class BaseConfig:
     BASE_DIR: pathlib.Path = pathlib.Path(__file__).parent.parent
+    ACCESS_TOKEN_EXPIRE_MINUTES = 129600  # 90 days
+    REFRESH_TOKEN_EXPIRE_DAYS = 90
 
     DATABASE_URL: str = os.environ.get("DATABASE_URL")
     DATABASE_TEST_URL: str = os.environ.get("DATABASE_TEST_URL")
