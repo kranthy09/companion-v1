@@ -6,8 +6,8 @@ DATABASE_TEST_URL=sqlite:///./test.db
 # Security - CHANGE THESE IN PRODUCTION
 
 SECRET_KEY=dev-secret-key-change-this-in-production-make-it-long-and-random
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
+ACCESS_TOKEN_EXPIRE_MINUTES=129600
+REFRESH_TOKEN_EXPIRE_DAYS=90
 
 # CORS Origins (comma-separated)
 
