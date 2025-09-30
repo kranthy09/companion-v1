@@ -46,7 +46,7 @@ services:
     command: >
       "ollama serve &
       sleep 10 &&
-      ollama pull gemma2 &&
+      ollama list | grep -q gemma2 || ollama pull gemma2 &&
       wait"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
