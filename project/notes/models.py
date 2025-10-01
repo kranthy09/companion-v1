@@ -4,6 +4,7 @@ companion/project/notes/models.py
 Updated Notes Model with separate AI fields
 """
 
+from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
     String,
@@ -14,7 +15,6 @@ from sqlalchemy import (
     Boolean,
     Integer,
 )
-from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
 from project.database import Base
@@ -48,10 +48,14 @@ class Note(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
