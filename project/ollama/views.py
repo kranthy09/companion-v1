@@ -154,7 +154,8 @@ async def enhance_note_streaming(
 
     async def generate():
         # Send task_id first
-        yield f"data: {json.dumps({'task_id': task_id, 'status': 'started'})}\n\n"
+        response = {"task_id": task_id, "status": "started"}
+        yield f"data: {json.dumps(response)}\n\n"
 
         full_text = ""
         try:
@@ -169,8 +170,13 @@ async def enhance_note_streaming(
             from project.ollama.tasks import task_save_enhanced_note
 
             task_save_enhanced_note.delay(note.id, full_text)
-
-            yield f"data: {json.dumps({'chunk': '', 'done': True, 'full_text': full_text, 'task_id': task_id})}\n\n"
+            response = {
+                "chunk": "",
+                "done": True,
+                "full_text": full_text,
+                "task_id": task_id,
+            }
+            yield f"data: {json.dumps(response)}\n\n"
         except Exception as e:
             # task.update_state(state="FAILURE", meta={"error": str(e)})
             yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
