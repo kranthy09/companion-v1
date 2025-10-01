@@ -31,7 +31,7 @@ class BaseConfig:
     OLLAMA_BASE_URL: str = os.environ.get(
         "OLLAMA_BASE_URL", "http://localhost:11434"
     )
-    OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "gemma3")
+    OLLAMA_MODEL: str = os.environ.get("OLLAMA_MODEL", "gemma2:2b")
     # JWT Configuration - MOVED TO ENVIRONMENT
     SECRET_KEY: str = os.environ.get(
         "SECRET_KEY", "dev-only-key-change-in-production"  # Shorter default

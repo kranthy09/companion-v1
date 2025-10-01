@@ -20,8 +20,10 @@ async def ws_ollama_stream(websocket: WebSocket):
     if cookie_header:
         cookies = parse_cookies(cookie_header=cookie_header)
     token = cookies.get("access_token")
+    print(f"Extracted token: {token}")  # Add this
 
     if not token:
+        print("No token found, closing")  # Add this
         await websocket.close(code=1008, reason="Not authenticated")
         return
 

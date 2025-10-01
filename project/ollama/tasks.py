@@ -157,69 +157,23 @@ def task_summarize_note(self, note_id: int, user_id: int):
         raise self.retry(exc=e, countdown=60)
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True)
 def task_stream_enhance_note(self, note_id: int, user_id: int):
-    """Enhance note WITH streaming"""
-    task_id = self.request.id
+    """Track streaming enhancement task"""
+    self.update_state(state="STARTED", meta={"note_id": note_id})
+    # Actual work done in streaming endpoint
+    return {"note_id": note_id, "status": "streaming"}
 
-    try:
-        with db_context() as session:
-            note = (
-                session.query(Note)
-                .filter(Note.id == note_id, Note.user_id == user_id)
-                .first()
-            )
 
-            if not note:
-                raise ValueError("Note not found")
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            full_text = ""
-
-            async def stream_and_publish():
-                nonlocal full_text
-                await broadcast.connect()
-
-                async for chunk in streaming_service.stream_enhance_note(
-                    note.title, note.content, "improve"
-                ):
-                    full_text += chunk
-                    await broadcast.publish(
-                        channel=f"stream:{task_id}",
-                        message=json.dumps(
-                            {"type": "chunk", "data": chunk, "done": False}
-                        ),
-                    )
-
-                # Final message
-                await broadcast.publish(
-                    channel=f"stream:{task_id}",
-                    message=json.dumps(
-                        {"type": "complete", "data": full_text, "done": True}
-                    ),
-                )
-
-                await broadcast.disconnect()
-
-            loop.run_until_complete(stream_and_publish())
-            loop.close()
-
-            # Save to DB
-            note.ai_enhanced_content = full_text
+@shared_task
+def task_save_enhanced_note(note_id: int, content: str):
+    """Save enhanced content to database"""
+    with db_context() as session:
+        note = session.query(Note).filter(Note.id == note_id).first()
+        if note:
+            note.ai_enhanced_content = content
             note.has_ai_enhancement = True
             session.commit()
-
-            return {
-                "note_id": note_id,
-                "success": True,
-                "content_length": len(full_text),
-            }
-
-    except Exception as e:
-        logger.error(f"Stream enhancement failed: {e}")
-        raise self.retry(exc=e, countdown=60)
 
 
 @shared_task(bind=True, max_retries=3)

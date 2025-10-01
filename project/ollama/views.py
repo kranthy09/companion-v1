@@ -2,7 +2,9 @@
 project/ollama/views.py - Enhanced with task metadata creation
 """
 
+import json
 from fastapi import Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
@@ -19,6 +21,7 @@ from project.auth.models import User
 from project.database import get_db_session
 from project.notes.models import Note
 from project.tasks.service import TaskService
+from project.ollama.streaming import streaming_service
 from project.schemas.response import (
     APIResponse,
     success_response,
@@ -126,16 +129,13 @@ def summarize_note(
     )
 
 
-@ollama_router.post(
-    "/enhance/stream", response_model=APIResponse[TaskResponse]
-)
-def enhance_note_streaming(
-    request_obj: Request,
+@ollama_router.post("/enhance/stream")
+async def enhance_note_streaming(
     note_request: NoteRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Enhance note with streaming"""
+    """Start task and stream results"""
     note = (
         db.query(Note)
         .filter(
@@ -143,34 +143,39 @@ def enhance_note_streaming(
         )
         .first()
     )
-
     if not note:
         raise HTTPException(404, "Note not found")
 
+    # Create Celery task for tracking
     task = task_stream_enhance_note.delay(
         note_request.note_id, current_user.id
     )
+    task_id = task.id
 
-    task_service = TaskService(db)
-    task_service.create_task(
-        task_id=task.id,
-        user_id=current_user.id,
-        task_type="enhance_stream",
-        task_name=f"Stream Enhance: {note.title[:50]}",
-        resource_type="note",
-        resource_id=note.id,
-    )
+    async def generate():
+        # Send task_id first
+        yield f"data: {json.dumps({'task_id': task_id, 'status': 'started'})}\n\n"
 
-    return success_response(
-        data=TaskResponse(
-            task_id=task.id,
-            note_id=note_request.note_id,
-            streaming=True,
-            message="Enhancement started with streaming",
-            stream_channel=f"stream:{task.id}",
-            ws_url=f"/ollama/ws/stream/{task.id}",
-        )
-    )
+        full_text = ""
+        try:
+            async for chunk in streaming_service.stream_enhance_note(
+                note.title, note.content, "improve"
+            ):
+                full_text += chunk
+                yield f" \
+                    data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+
+            # Queue save task
+            from project.ollama.tasks import task_save_enhanced_note
+
+            task_save_enhanced_note.delay(note.id, full_text)
+
+            yield f"data: {json.dumps({'chunk': '', 'done': True, 'full_text': full_text, 'task_id': task_id})}\n\n"
+        except Exception as e:
+            # task.update_state(state="FAILURE", meta={"error": str(e)})
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @ollama_router.post(

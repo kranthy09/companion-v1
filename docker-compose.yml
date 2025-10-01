@@ -33,7 +33,6 @@ services:
     image: redis:7-alpine
     networks:
         - companion-network
-
   ollama:
     image: ollama/ollama:latest
     container_name: companion_ollama
@@ -41,12 +40,19 @@ services:
       - "11434:11434"
     volumes:
       - companion_ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: always
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "ollama serve &
       sleep 10 &&
-      ollama list | grep -q gemma2 || ollama pull gemma2 &&
+      ollama list | grep -q gemma2:2b || ollama pull gemma2:2b &&
       wait"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
