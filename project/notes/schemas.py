@@ -108,3 +108,17 @@ class NoteQueryParams(BaseModel):
         default="created_at", pattern="^(created_at|updated_at|title)$"
     )
     sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+class QuestionBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question_text: str
+    answer: Optional[str]
+    created_at: datetime
+
+
+class QuestionCreate(BaseModel):
+    note_id: int
+    question_text: str

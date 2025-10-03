@@ -60,6 +60,9 @@ class Note(Base):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="notes")
+    questions: Mapped[List["Question"]] = relationship(
+        "Question", back_populates="note", cascade="all, delete-orphan"
+    )
 
     def update_word_count(self) -> None:
         """Update word count based on current content"""
@@ -67,3 +70,17 @@ class Note(Base):
 
     def __repr__(self) -> str:
         return f"<Note(id={self.id}, title='{self.title[:30]}...')>"
+
+
+class Question(Base):
+    __tablename__ = "questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("notes.id"))
+    question_text: Mapped[str] = mapped_column(Text)
+    answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    note: Mapped["Note"] = relationship("Note", back_populates="questions")

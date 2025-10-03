@@ -8,6 +8,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
+from project.notes.schemas import QuestionCreate
+
 from . import ollama_router
 from .service import ollama_service
 from .tasks import (
@@ -229,3 +231,50 @@ def summarize_note_streaming(
             ws_url=f"/ollama/ws/stream/{task.id}",
         )
     )
+
+
+@ollama_router.post("/ask")
+async def ask_question(
+    request: QuestionCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    note = (
+        db.query(Note)
+        .filter(Note.id == request.note_id, Note.user_id == current_user.id)
+        .first()
+    )
+    if not note:
+        raise HTTPException(404, "Note not found")
+
+    async def generate():
+        context = (
+            note.ai_enhanced_content
+            if note.has_ai_enhancement
+            else note.content
+        )
+
+        prompt = (
+            f"Title: {note.title}\n\n"
+            f"Content: {context}\n\n"
+            f"Question: {request.question_text}\n\n"
+            f"Provide clear explanation with up to 3 examples."
+        )
+
+        # Stream answer
+        full_answer = ""
+        async for chunk in streaming_service.stream_generate(prompt):
+            full_answer += chunk
+            yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+
+        # Queue save task (once, after streaming complete)
+        from project.ollama.tasks import task_save_question
+
+        task_save_question.delay(
+            request.note_id, request.question_text, full_answer
+        )
+
+        response = {"chunk": "", "done": True, "full_answer": full_answer}
+        yield f"data: {json.dumps(response)}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")

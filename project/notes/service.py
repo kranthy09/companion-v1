@@ -163,3 +163,11 @@ class NoteService:
             "unique_tags": list(all_tags),
             "tags_count": len(all_tags),
         }
+
+    def get_note_questions(self, note_id: int, user_id: int) -> List:
+        """Get all questions for a note"""
+
+        note = self.get_note_by_id(note_id, user_id)
+        if not note:
+            return None
+        return note.questions

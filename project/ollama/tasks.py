@@ -10,7 +10,7 @@ from celery.utils.log import get_task_logger
 from asgiref.sync import async_to_sync
 
 from project.database import db_context
-from project.notes.models import Note
+from project.notes.models import Note, Question
 from project.ollama.service import ollama_service
 from project.ollama.streaming import streaming_service
 from project import broadcast
@@ -174,6 +174,18 @@ def task_save_enhanced_note(note_id: int, content: str):
             note.ai_enhanced_content = content
             note.has_ai_enhancement = True
             session.commit()
+
+
+@shared_task
+def task_save_question(note_id: int, question_text: str, answer: str):
+    """Save Q&A to database"""
+    with db_context() as session:
+        question = Question(
+            note_id=note_id, question_text=question_text, answer=answer
+        )
+        session.add(question)
+        session.commit()
+        return {"question_id": question.id}
 
 
 @shared_task(bind=True, max_retries=3)

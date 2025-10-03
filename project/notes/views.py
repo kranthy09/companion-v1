@@ -4,9 +4,11 @@ companion/project/notes/views.py
 Notes App APIs
 """
 
-from fastapi import Depends, HTTPException, status, Query
+from fastapi import Depends, HTTPException, Request, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+
+from project.schemas.response import APIResponse, success_response
 
 from . import notes_router
 from .schemas import (
@@ -17,6 +19,7 @@ from .schemas import (
     NoteDeleteResponse,
     NoteQueryParams,
     NoteStatsResponse,
+    QuestionBase,
 )
 from .service import NoteService
 from project.auth.dependencies import (
@@ -30,7 +33,7 @@ from project.database import get_db_session
     "/", response_model=NoteResponse, status_code=status.HTTP_201_CREATED
 )
 def create_note(
-    note_data: NoteCreate,  
+    note_data: NoteCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -179,3 +182,22 @@ def get_notes_stats(
         data=stats,
         message="Statistics retrieved successfully",
     )
+
+
+@notes_router.get(
+    "/{note_id}/questions", response_model=APIResponse[List[QuestionBase]]
+)
+def get_note_questions(
+    request: Request,
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    questions = service.get_note_questions(note_id, current_user.id)
+
+    if questions is None:
+        raise HTTPException(404, "Note not found")
+
+    questions_data = [QuestionBase.model_validate(q) for q in questions]
+    return success_response(data=questions_data)
