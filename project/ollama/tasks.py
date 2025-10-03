@@ -167,13 +167,20 @@ def task_stream_enhance_note(self, note_id: int, user_id: int):
 
 @shared_task
 def task_save_enhanced_note(note_id: int, content: str):
-    """Save enhanced content to database"""
+    """Save enhanced content as new version"""
+    from project.notes.models import EnhancedNote
+    from project.notes.service import NoteService
+
     with db_context() as session:
-        note = session.query(Note).filter(Note.id == note_id).first()
-        if note:
-            note.ai_enhanced_content = content
-            note.has_ai_enhancement = True
-            session.commit()
+        service = NoteService(session)
+        version = service.get_next_version_number(note_id)
+
+        enhanced = EnhancedNote(
+            note_id=note_id, content=content, version_number=version
+        )
+        session.add(enhanced)
+        session.commit()
+        return {"version": version}
 
 
 @shared_task

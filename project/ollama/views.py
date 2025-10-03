@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from sqlalchemy.orm import joinedload
 
 from project.notes.schemas import QuestionCreate
 
@@ -29,6 +30,9 @@ from project.schemas.response import (
     success_response,
 )
 from project.ollama.schemas import HealthCheckResponse, TaskResponse
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class NoteRequest(BaseModel):
@@ -241,6 +245,7 @@ async def ask_question(
 ):
     note = (
         db.query(Note)
+        .options(joinedload(Note.enhanced_versions))
         .filter(Note.id == request.note_id, Note.user_id == current_user.id)
         .first()
     )
@@ -248,33 +253,36 @@ async def ask_question(
         raise HTTPException(404, "Note not found")
 
     async def generate():
-        context = (
-            note.ai_enhanced_content
-            if note.has_ai_enhancement
-            else note.content
-        )
+        try:
+            context = (
+                note.enhanced_versions[0].content
+                if note.enhanced_versions
+                else note.content
+            )
 
-        prompt = (
-            f"Title: {note.title}\n\n"
-            f"Content: {context}\n\n"
-            f"Question: {request.question_text}\n\n"
-            f"Provide clear explanation with up to 3 examples."
-        )
+            prompt = (
+                f"Title: {note.title}\n\n"
+                f"Content: {context}\n\n"
+                f"Question: {request.question_text}\n\n"
+                f"Provide clear explanation with up to 3 examples."
+            )
 
-        # Stream answer
-        full_answer = ""
-        async for chunk in streaming_service.stream_generate(prompt):
-            full_answer += chunk
-            yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+            full_answer = ""
+            async for chunk in streaming_service.stream_generate(prompt):
+                full_answer += chunk
+                yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
 
-        # Queue save task (once, after streaming complete)
-        from project.ollama.tasks import task_save_question
+            # Queue save
+            from project.ollama.tasks import task_save_question
 
-        task_save_question.delay(
-            request.note_id, request.question_text, full_answer
-        )
+            task_save_question.delay(
+                request.note_id, request.question_text, full_answer
+            )
 
-        response = {"chunk": "", "done": True, "full_answer": full_answer}
-        yield f"data: {json.dumps(response)}\n\n"
+            yield f"data: {json.dumps({'chunk': '', 'done': True, 'full_answer': full_answer})}\n\n"
+
+        except Exception as e:
+            logger.error(f"Stream error: {e}")
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")

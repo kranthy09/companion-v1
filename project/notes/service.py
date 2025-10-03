@@ -8,6 +8,8 @@ import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, desc, asc
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload
 from datetime import datetime
 
 from .models import Note
@@ -171,3 +173,25 @@ class NoteService:
         if not note:
             return None
         return note.questions
+
+    def get_enhanced_versions(self, note_id: int, user_id: int) -> List:
+        note = (
+            self.db.query(Note)
+            .options(joinedload(Note.enhanced_versions))
+            .filter(Note.id == note_id, Note.user_id == user_id)
+            .first()
+        )
+        if not note:
+            return None
+        return note.enhanced_versions
+
+    def get_next_version_number(self, note_id: int) -> int:
+        """Get next version number for enhanced note"""
+        from project.notes.models import EnhancedNote
+
+        max_version = (
+            self.db.query(func.max(EnhancedNote.version_number))
+            .filter(EnhancedNote.note_id == note_id)
+            .scalar()
+        )
+        return (max_version or 0) + 1

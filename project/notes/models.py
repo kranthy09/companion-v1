@@ -12,7 +12,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     JSON,
-    Boolean,
     Integer,
 )
 from typing import Optional, List, TYPE_CHECKING
@@ -43,8 +42,6 @@ class Note(Base):
     ai_enhanced_content: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )
-    has_ai_summary: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_ai_enhancement: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -63,6 +60,12 @@ class Note(Base):
     questions: Mapped[List["Question"]] = relationship(
         "Question", back_populates="note", cascade="all, delete-orphan"
     )
+    enhanced_versions: Mapped[List["EnhancedNote"]] = relationship(
+        "EnhancedNote",
+        back_populates="note",
+        cascade="all, delete-orphan",
+        order_by="desc(EnhancedNote.version_number)",
+    )
 
     def update_word_count(self) -> None:
         """Update word count based on current content"""
@@ -70,6 +73,22 @@ class Note(Base):
 
     def __repr__(self) -> str:
         return f"<Note(id={self.id}, title='{self.title[:30]}...')>"
+
+
+class EnhancedNote(Base):
+    __tablename__ = "enhanced_notes"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("notes.id"))
+    content: Mapped[str] = mapped_column(Text)
+    version_number: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    note: Mapped["Note"] = relationship(
+        "Note", back_populates="enhanced_versions"
+    )
 
 
 class Question(Base):

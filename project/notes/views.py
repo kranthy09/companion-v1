@@ -19,8 +19,10 @@ from .schemas import (
     NoteDeleteResponse,
     NoteQueryParams,
     NoteStatsResponse,
+    EnhancedNoteResponse,
     QuestionBase,
 )
+
 from .service import NoteService
 from project.auth.dependencies import (
     get_current_user,
@@ -41,6 +43,7 @@ def create_note(
     try:
         service = NoteService(db)
         note = service.create_note(current_user.id, note_data)
+        print("created note: ", note)
         return NoteResponse(
             success=True, data=note, message="Note created successfully"
         )
@@ -201,3 +204,24 @@ def get_note_questions(
 
     questions_data = [QuestionBase.model_validate(q) for q in questions]
     return success_response(data=questions_data)
+
+
+@notes_router.get(
+    "/{note_id}/enhanced",
+    response_model=APIResponse[List[EnhancedNoteResponse]],
+)
+def get_enhanced_versions(
+    request: Request,
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Get all enhanced versions for a note"""
+    service = NoteService(db)
+    versions = service.get_enhanced_versions(note_id, current_user.id)
+
+    if versions is None:
+        raise HTTPException(404, "Note not found")
+
+    data = [EnhancedNoteResponse.model_validate(v) for v in versions]
+    return success_response(data=data)

@@ -14,8 +14,8 @@ until docker compose exec ollama curl -f http://localhost:11434/api/tags >/dev/n
     sleep 1
 done
 
-echo "📥 Pulling Ollama model (gemma3)..."
-docker compose exec ollama ollama pull gemma3
+# echo "📥 Pulling Ollama model (gemma3)..."
+# docker compose exec ollama ollama pull gemma3
 
 echo "✅ All services ready!"
 echo ""

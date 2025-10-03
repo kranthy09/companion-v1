@@ -39,27 +39,19 @@ class NoteBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: int
     title: str
     content: str
     content_type: str
-    tags: List[str]
-
-    # AI fields
-    ai_summary: Optional[str]
-    ai_enhanced_content: Optional[str]
-    has_ai_summary: bool
-    has_ai_enhancement: bool
-
+    tags: Optional[List[str]]
+    words_count: int
     created_at: datetime
     updated_at: datetime
-    words_count: int
 
 
 class NoteResponse(BaseModel):
-    success: bool = True
+    success: bool
     data: NoteBase
-    message: Optional[str] = None
+    message: str
 
 
 class NoteStatsBase(BaseModel):
@@ -108,6 +100,15 @@ class NoteQueryParams(BaseModel):
         default="created_at", pattern="^(created_at|updated_at|title)$"
     )
     sort_order: str = Field(default="desc", pattern="^(asc|desc)$")
+
+
+class EnhancedNoteResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    content: str
+    version_number: int
+    created_at: datetime
 
 
 class QuestionBase(BaseModel):
