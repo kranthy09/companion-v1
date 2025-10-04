@@ -25,6 +25,7 @@ from .schemas import (
     QuizQuestionWithSubmission,
     QuizAnswerSubmit,
     QuizResultResponse,
+    QuizResultItem,
 )
 
 from .service import NoteService
@@ -318,6 +319,7 @@ def submit_quiz(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    print("submissions: ", submission)
     service = NoteService(db)
     quiz = service.get_quiz_by_id(submission.quiz_id, current_user.id)
     if not quiz:
@@ -325,27 +327,24 @@ def submit_quiz(
 
     results = []
     correct = 0
-    print("submissions: ", submission)
 
     for question in quiz.questions:
         user_answer = submission.answers.get(question.id)
-        is_correct = user_answer == question.correct_answer
+
+        # Extract letter prefix (A, B, C, D)
+        if user_answer:
+            user_answer_letter = user_answer.split(".")[0].strip()
+        else:
+            user_answer_letter = None
+
+        is_correct = user_answer_letter == question.correct_answer
         if is_correct:
             correct += 1
 
         results.append(
-            {
-                "question_id": question.id,
-                "is_correct": is_correct,
-                "correct_answer": question.correct_answer,
-                "user_answer": user_answer,
-                "explanation": (
-                    question.explanation if not is_correct else None
-                ),
-            }
+            QuizResultItem(question_id=question.id, is_correct=is_correct)
         )
 
-    # Save submission
     from project.notes.models import QuizSubmission
 
     quiz_submission = QuizSubmission(

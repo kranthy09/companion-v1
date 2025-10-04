@@ -146,10 +146,15 @@ class QuizAnswerSubmit(BaseModel):
     answers: Dict[int, str]  # question_id: selected_answer
 
 
+class QuizResultItem(BaseModel):
+    question_id: int
+    is_correct: bool
+
+
 class QuizResultResponse(BaseModel):
     correct_count: int
     total_count: int
-    results: List[Dict]  # {question_id, is_correct, explanation}
+    results: List[QuizResultItem]
 
 
 class QuizQuestionData(BaseModel):
