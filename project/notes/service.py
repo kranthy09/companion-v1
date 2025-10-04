@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 
-from .models import Note
+from .models import Note, Quiz
 from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
 
 logger = logging.getLogger(__name__)
@@ -195,3 +195,40 @@ class NoteService:
             .scalar()
         )
         return (max_version or 0) + 1
+
+    def get_note_with_quizzes(self, note_id: int, user_id: int):
+        """Get note with quizzes loaded"""
+
+        return (
+            self.db.query(Note)
+            .options(joinedload(Note.quizzes).joinedload(Quiz.questions))
+            .filter(Note.id == note_id, Note.user_id == user_id)
+            .first()
+        )
+
+    def get_quiz_by_id(self, quiz_id: int, user_id: int):
+        """Get quiz with questions for user's note"""
+
+        return (
+            self.db.query(Quiz)
+            .options(joinedload(Quiz.questions))
+            .join(Note)
+            .filter(Quiz.id == quiz_id, Note.user_id == user_id)
+            .first()
+        )
+
+    def get_note_with_quizzes_and_submissions(
+        self, note_id: int, user_id: int
+    ):
+
+        note = (
+            self.db.query(Note)
+            .options(
+                joinedload(Note.quizzes).joinedload(Quiz.questions),
+                joinedload(Note.quizzes).joinedload(Quiz.submissions),
+            )
+            .filter(Note.id == note_id, Note.user_id == user_id)
+            .first()
+        )
+
+        return note

@@ -66,6 +66,9 @@ class Note(Base):
         cascade="all, delete-orphan",
         order_by="desc(EnhancedNote.version_number)",
     )
+    quizzes: Mapped[List["Quiz"]] = relationship(
+        "Quiz", back_populates="note", cascade="all, delete-orphan"
+    )
 
     def update_word_count(self) -> None:
         """Update word count based on current content"""
@@ -77,7 +80,7 @@ class Note(Base):
 
 class EnhancedNote(Base):
     __tablename__ = "enhanced_notes"
-    
+
     id: Mapped[int] = mapped_column(primary_key=True)
     note_id: Mapped[int] = mapped_column(ForeignKey("notes.id"))
     content: Mapped[str] = mapped_column(Text)
@@ -103,3 +106,49 @@ class Question(Base):
     )
 
     note: Mapped["Note"] = relationship("Note", back_populates="questions")
+
+
+class Quiz(Base):
+    __tablename__ = "quizzes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("notes.id"))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    note: Mapped["Note"] = relationship("Note", back_populates="quizzes")
+    questions: Mapped[List["QuizQuestion"]] = relationship(
+        "QuizQuestion", back_populates="quiz", cascade="all, delete-orphan"
+    )
+    submissions: Mapped[List["QuizSubmission"]] = relationship(
+        "QuizSubmission", back_populates="quiz", cascade="all, delete-orphan"
+    )
+
+
+class QuizQuestion(Base):
+    __tablename__ = "quiz_questions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id"))
+    question_text: Mapped[str] = mapped_column(Text)
+    options: Mapped[List[str]] = mapped_column(JSON)
+    correct_answer: Mapped[str] = mapped_column(String(255))
+    explanation: Mapped[str] = mapped_column(Text)
+
+    quiz: Mapped["Quiz"] = relationship("Quiz", back_populates="questions")
+
+
+class QuizSubmission(Base):
+    __tablename__ = "quiz_submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quiz_id: Mapped[int] = mapped_column(ForeignKey("quizzes.id"))
+    score: Mapped[int] = mapped_column(Integer)
+    total: Mapped[int] = mapped_column(Integer)
+    answers: Mapped[dict] = mapped_column(JSON)
+    submitted_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    quiz: Mapped["Quiz"] = relationship("Quiz")

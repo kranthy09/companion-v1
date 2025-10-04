@@ -21,6 +21,10 @@ from .schemas import (
     NoteStatsResponse,
     EnhancedNoteResponse,
     QuestionBase,
+    QuizWithSubmission,
+    QuizQuestionWithSubmission,
+    QuizAnswerSubmit,
+    QuizResultResponse,
 )
 
 from .service import NoteService
@@ -225,3 +229,144 @@ def get_enhanced_versions(
 
     data = [EnhancedNoteResponse.model_validate(v) for v in versions]
     return success_response(data=data)
+
+
+@notes_router.post("/{note_id}/quiz/generate")
+def generate_quiz(
+    request: Request,
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    if not service.get_note_by_id(note_id, current_user.id):
+        raise HTTPException(404, "Note not found")
+
+    from project.ollama.tasks import task_generate_quiz
+
+    task = task_generate_quiz.delay(note_id)
+
+    return success_response(
+        data={"task_id": task.id},
+        message="Quiz generation started",
+    )
+
+
+@notes_router.get(
+    "/{note_id}/quiz", response_model=APIResponse[List[QuizWithSubmission]]
+)
+def get_quizzes(
+    request: Request,
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    note = service.get_note_with_quizzes_and_submissions(
+        note_id, current_user.id
+    )
+    if not note:
+        raise HTTPException(404, "Note not found")
+
+    quizzes_data = []
+    for quiz in note.quizzes:
+        # Find current user's submission
+        submission = next((s for s in quiz.submissions), None)
+
+        questions = []
+        for q in quiz.questions:
+            user_ans = None
+            is_correct = None
+
+            if submission:
+                user_ans = submission.answers.get(str(q.id))
+                is_correct = user_ans == q.correct_answer
+
+            questions.append(
+                QuizQuestionWithSubmission(
+                    id=q.id,
+                    question_text=q.question_text,
+                    options=q.options,
+                    user_answer=user_ans,
+                    is_correct=is_correct,
+                )
+            )
+
+        quizzes_data.append(
+            QuizWithSubmission(
+                id=quiz.id,
+                created_at=quiz.created_at,
+                questions=questions,
+                submission=(
+                    {
+                        "score": submission.score,
+                        "total": submission.total,
+                        "submitted_at": submission.submitted_at,
+                    }
+                    if submission
+                    else None
+                ),
+            )
+        )
+
+    return success_response(data=quizzes_data)
+
+
+@notes_router.post("/quiz/submit")
+def submit_quiz(
+    submission: QuizAnswerSubmit,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    quiz = service.get_quiz_by_id(submission.quiz_id, current_user.id)
+    if not quiz:
+        raise HTTPException(404, "Quiz not found")
+
+    results = []
+    correct = 0
+    print("submissions: ", submission)
+
+    for question in quiz.questions:
+        user_answer = submission.answers.get(question.id)
+        is_correct = user_answer == question.correct_answer
+        if is_correct:
+            correct += 1
+
+        results.append(
+            {
+                "question_id": question.id,
+                "is_correct": is_correct,
+                "correct_answer": question.correct_answer,
+                "user_answer": user_answer,
+                "explanation": (
+                    question.explanation if not is_correct else None
+                ),
+            }
+        )
+
+    # Save submission
+    from project.notes.models import QuizSubmission
+
+    quiz_submission = QuizSubmission(
+        quiz_id=submission.quiz_id,
+        score=correct,
+        total=len(quiz.questions),
+        answers=submission.answers,
+    )
+    db.add(quiz_submission)
+    db.commit()
+    print("results: ", results)
+
+    return success_response(
+        data=QuizResultResponse(
+            correct_count=correct,
+            total_count=len(quiz.questions),
+            results=results,
+        ),
+        message=(
+            "Perfect score!"
+            if correct == len(quiz.questions)
+            else "Quiz submitted"
+        ),
+    )

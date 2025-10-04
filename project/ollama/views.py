@@ -270,7 +270,8 @@ async def ask_question(
             full_answer = ""
             async for chunk in streaming_service.stream_generate(prompt):
                 full_answer += chunk
-                yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+                yield f" \
+                    data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
 
             # Queue save
             from project.ollama.tasks import task_save_question
@@ -278,8 +279,11 @@ async def ask_question(
             task_save_question.delay(
                 request.note_id, request.question_text, full_answer
             )
+            response = json.dumps(
+                {"chunk": "", "done": True, "full_answer": full_answer}
+            )
 
-            yield f"data: {json.dumps({'chunk': '', 'done': True, 'full_answer': full_answer})}\n\n"
+            yield f"data: {response}\n\n"
 
         except Exception as e:
             logger.error(f"Stream error: {e}")

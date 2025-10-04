@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Boolean, DateTime, func
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
-
 from project.database import Base
 
 if TYPE_CHECKING:

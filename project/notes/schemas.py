@@ -5,7 +5,7 @@ Updated Notes schemas with AI fields
 """
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 
 
@@ -123,3 +123,60 @@ class QuestionBase(BaseModel):
 class QuestionCreate(BaseModel):
     note_id: int
     question_text: str
+
+
+class QuizQuestionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question_text: str
+    options: List[str]
+
+
+class QuizResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    questions: List[QuizQuestionResponse]
+    created_at: datetime
+
+
+class QuizAnswerSubmit(BaseModel):
+    quiz_id: int
+    answers: Dict[int, str]  # question_id: selected_answer
+
+
+class QuizResultResponse(BaseModel):
+    correct_count: int
+    total_count: int
+    results: List[Dict]  # {question_id, is_correct, explanation}
+
+
+class QuizQuestionData(BaseModel):
+    question: str
+    options: List[str]
+
+
+class QuizGenerationResult(BaseModel):
+    quiz_id: int
+    questions: List[QuizQuestionData]
+    total: int
+
+
+class QuizQuestionWithSubmission(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question_text: str
+    options: List[str]
+    user_answer: Optional[str] = None
+    is_correct: Optional[bool] = None
+
+
+class QuizWithSubmission(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    questions: List[QuizQuestionWithSubmission]
+    submission: Optional[Dict] = None  # {score, total, submitted_at}

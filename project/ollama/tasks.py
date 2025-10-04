@@ -10,7 +10,13 @@ from celery.utils.log import get_task_logger
 from asgiref.sync import async_to_sync
 
 from project.database import db_context
-from project.notes.models import Note, Question
+from project.notes.models import (
+    Note,
+    Question,
+    Quiz,
+    QuizQuestion,
+)
+from project.notes.schemas import QuizQuestionData, QuizGenerationResult
 from project.ollama.service import ollama_service
 from project.ollama.streaming import streaming_service
 from project import broadcast
@@ -257,3 +263,78 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
     except Exception as e:
         logger.error(f"Stream summary failed: {e}")
         raise self.retry(exc=e, countdown=60)
+
+
+@shared_task
+def task_generate_quiz(note_id: int) -> dict:
+    """Generate quiz and return structured result"""
+    try:
+
+        with db_context() as session:
+            note = session.query(Note).filter(Note.id == note_id).first()
+            if not note:
+                return {"error": "Note not found"}
+
+            context = note.content[:800]
+            prompt = f"""Create 5 quiz questions about: {context}
+
+    Return ONLY valid JSON array:
+    [{{"question":"text","options":["A","B","C","D"],"correct":"A","explanation":"why"}}]
+    """
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(ollama_service.generate(prompt))
+            loop.close()
+            response_text = result["response"]
+
+            # Try to find JSON array
+            import re
+
+            json_match = re.search(
+                r"\[\s*\{.*?\}\s*\]", response_text, re.DOTALL
+            )
+            if not json_match:
+                logger.error(f"No JSON found in: {response_text[:200]}")
+                return {"error": "Invalid response format"}
+
+            quiz_data = json.loads(json_match.group())
+
+            # Validate structure
+            if not isinstance(quiz_data, list) or len(quiz_data) == 0:
+                return {"error": "Empty quiz data"}
+
+            quiz = Quiz(note_id=note_id)
+            session.add(quiz)
+            session.flush()
+
+            questions_response = []
+            for q in quiz_data:
+                session.add(
+                    QuizQuestion(
+                        quiz_id=quiz.id,
+                        question_text=q["question"],
+                        options=q["options"],
+                        correct_answer=q["correct"],
+                        explanation=q["explanation"],
+                    )
+                )
+                questions_response.append(
+                    QuizQuestionData(
+                        question=q["question"], options=q["options"]
+                    ).model_dump()
+                )
+
+            session.commit()
+
+            return QuizGenerationResult(
+                quiz_id=quiz.id,
+                questions=questions_response,
+                total=len(questions_response),
+            ).model_dump()
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}, Response: {response_text[:200]}")
+        return {"error": "Failed to parse quiz"}
+    except Exception as e:
+        logger.error(f"Quiz generation failed: {e}")
+        return {"error": str(e)}
