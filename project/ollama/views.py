@@ -213,7 +213,7 @@ async def generate_summary_stream(
 
 Context: {context}
 
-Provide:
+Must Provide:
 1. Executive summary (2-3 sentences)
 2. Top 3 key insights
 3. Main conclusion
