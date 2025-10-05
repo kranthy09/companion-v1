@@ -24,8 +24,9 @@ from .schemas import (
     QuizWithSubmission,
     QuizQuestionWithSubmission,
     QuizAnswerSubmit,
-    QuizResultResponse,
-    QuizResultItem,
+    QuizResultDetail,
+    QuizSubmitResponse,
+    QuizGenerateResponse,
 )
 
 from .service import NoteService
@@ -232,7 +233,10 @@ def get_enhanced_versions(
     return success_response(data=data)
 
 
-@notes_router.post("/{note_id}/quiz/generate")
+@notes_router.post(
+    "/{note_id}/quiz/generate",
+    response_model=APIResponse[QuizGenerateResponse],
+)
 def generate_quiz(
     request: Request,
     note_id: int,
@@ -245,10 +249,10 @@ def generate_quiz(
 
     from project.ollama.tasks import task_generate_quiz
 
-    task = task_generate_quiz.delay(note_id)
+    task = task_generate_quiz.delay(note_id, current_user.id)
 
     return success_response(
-        data={"task_id": task.id},
+        data=QuizGenerateResponse(task_id=task.id),
         message="Quiz generation started",
     )
 
@@ -257,7 +261,6 @@ def generate_quiz(
     "/{note_id}/quiz", response_model=APIResponse[List[QuizWithSubmission]]
 )
 def get_quizzes(
-    request: Request,
     note_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
@@ -271,27 +274,24 @@ def get_quizzes(
 
     quizzes_data = []
     for quiz in note.quizzes:
-        # Find current user's submission
-        submission = next((s for s in quiz.submissions), None)
+        submission = quiz.submissions[0] if quiz.submissions else None
 
-        questions = []
-        for q in quiz.questions:
-            user_ans = None
-            is_correct = None
-
-            if submission:
-                user_ans = submission.answers.get(str(q.id))
-                is_correct = user_ans == q.correct_answer
-
-            questions.append(
-                QuizQuestionWithSubmission(
-                    id=q.id,
-                    question_text=q.question_text,
-                    options=q.options,
-                    user_answer=user_ans,
-                    is_correct=is_correct,
-                )
+        questions = [
+            QuizQuestionWithSubmission(
+                id=q.id,
+                question_text=q.question_text,
+                options=q.options,
+                user_answer=(
+                    submission.answers.get(str(q.id)) if submission else None
+                ),
+                is_correct=(
+                    submission.answers.get(str(q.id)) == q.correct_answer
+                    if submission and str(q.id) in submission.answers
+                    else None
+                ),
             )
+            for q in quiz.questions
+        ]
 
         quizzes_data.append(
             QuizWithSubmission(
@@ -313,52 +313,48 @@ def get_quizzes(
     return success_response(data=quizzes_data)
 
 
-@notes_router.post("/quiz/submit")
+@notes_router.post(
+    "/quiz/submit", response_model=APIResponse[QuizSubmitResponse]
+)
 def submit_quiz(
+    request: Request,
     submission: QuizAnswerSubmit,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    print("submissions: ", submission)
     service = NoteService(db)
     quiz = service.get_quiz_by_id(submission.quiz_id, current_user.id)
     if not quiz:
         raise HTTPException(404, "Quiz not found")
 
-    results = []
+    results = {}
     correct = 0
+    stored_answers = {}
 
     for question in quiz.questions:
         user_answer = submission.answers.get(question.id)
+        is_correct = user_answer == question.correct_answer
 
-        # Extract letter prefix (A, B, C, D)
-        if user_answer:
-            user_answer_letter = user_answer.split(".")[0].strip()
-        else:
-            user_answer_letter = None
-
-        is_correct = user_answer_letter == question.correct_answer
         if is_correct:
             correct += 1
 
-        results.append(
-            QuizResultItem(question_id=question.id, is_correct=is_correct)
+        results[question.id] = QuizResultDetail(
+            is_correct=is_correct,
+            explanation=question.explanation if not is_correct else None,
         )
 
-    from project.notes.models import QuizSubmission
+        stored_answers[str(question.id)] = user_answer
 
-    quiz_submission = QuizSubmission(
+    service.create_quiz_submission(
         quiz_id=submission.quiz_id,
+        answers=stored_answers,
         score=correct,
         total=len(quiz.questions),
-        answers=submission.answers,
     )
-    db.add(quiz_submission)
-    db.commit()
-    print("results: ", results)
 
     return success_response(
-        data=QuizResultResponse(
+        data=QuizSubmitResponse(
+            quiz_id=submission.quiz_id,
             correct_count=correct,
             total_count=len(quiz.questions),
             results=results,

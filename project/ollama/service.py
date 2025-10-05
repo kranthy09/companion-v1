@@ -30,11 +30,16 @@ class OllamaService:
             logger.error(f"Ollama health check failed: {e}")
             return False
 
-    async def generate(self, prompt: str) -> Dict:
+    async def generate(self, prompt: str, temperature: float) -> Dict:
         """Generate text from prompt"""
         url = f"{self.base_url}/api/generate"
 
-        payload = {"model": self.model, "prompt": prompt, "stream": False}
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": temperature},
+        }
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(url, json=payload)

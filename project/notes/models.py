@@ -58,7 +58,9 @@ class Note(Base):
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="notes")
     questions: Mapped[List["Question"]] = relationship(
-        "Question", back_populates="note", cascade="all, delete-orphan"
+        "Question",
+        back_populates="note",
+        cascade="all, delete-orphan",
     )
     enhanced_versions: Mapped[List["EnhancedNote"]] = relationship(
         "EnhancedNote",
@@ -119,7 +121,10 @@ class Quiz(Base):
 
     note: Mapped["Note"] = relationship("Note", back_populates="quizzes")
     questions: Mapped[List["QuizQuestion"]] = relationship(
-        "QuizQuestion", back_populates="quiz", cascade="all, delete-orphan"
+        "QuizQuestion",
+        back_populates="quiz",
+        cascade="all, delete-orphan",
+        order_by="QuizQuestion.order",
     )
     submissions: Mapped[List["QuizSubmission"]] = relationship(
         "QuizSubmission", back_populates="quiz", cascade="all, delete-orphan"
@@ -135,7 +140,9 @@ class QuizQuestion(Base):
     options: Mapped[List[str]] = mapped_column(JSON)
     correct_answer: Mapped[str] = mapped_column(String(255))
     explanation: Mapped[str] = mapped_column(Text)
-
+    order: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, default=None
+    )
     quiz: Mapped["Quiz"] = relationship("Quiz", back_populates="questions")
 
 

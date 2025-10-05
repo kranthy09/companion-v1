@@ -146,6 +146,18 @@ class QuizAnswerSubmit(BaseModel):
     answers: Dict[int, str]  # question_id: selected_answer
 
 
+class QuizResultDetail(BaseModel):
+    is_correct: bool
+    explanation: Optional[str] = None
+
+
+class QuizSubmitResponse(BaseModel):
+    quiz_id: int
+    correct_count: int
+    total_count: int
+    results: Dict[int, QuizResultDetail]
+
+
 class QuizResultItem(BaseModel):
     question_id: int
     is_correct: bool
@@ -158,8 +170,13 @@ class QuizResultResponse(BaseModel):
 
 
 class QuizQuestionData(BaseModel):
+    question_id: int
     question: str
-    options: List[str]
+    options: Dict[str, str]  # {"A": "opt", "B": "opt", ...}
+
+
+class QuizGenerateResponse(BaseModel):
+    task_id: str
 
 
 class QuizGenerationResult(BaseModel):

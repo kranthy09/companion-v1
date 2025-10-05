@@ -15,7 +15,6 @@ from . import ollama_router
 from .service import ollama_service
 from .tasks import (
     task_enhance_note,
-    task_summarize_note,
     task_stream_enhance_note,
     task_stream_summarize_note,
 )
@@ -90,47 +89,6 @@ def enhance_note(
             note_id=note_request.note_id,
             streaming=False,
             message="Enhancement queued",
-        )
-    )
-
-
-@ollama_router.post("/summarize", response_model=APIResponse[TaskResponse])
-def summarize_note(
-    request_obj: Request,
-    note_request: NoteRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    """Summarize note (background)"""
-    note = (
-        db.query(Note)
-        .filter(
-            Note.id == note_request.note_id, Note.user_id == current_user.id
-        )
-        .first()
-    )
-
-    if not note:
-        raise HTTPException(404, "Note not found")
-
-    task = task_summarize_note.delay(note_request.note_id, current_user.id)
-
-    task_service = TaskService(db)
-    task_service.create_task(
-        task_id=task.id,
-        user_id=current_user.id,
-        task_type="summarize",
-        task_name=f"Summarize: {note.title[:50]}",
-        resource_type="note",
-        resource_id=note.id,
-    )
-
-    return success_response(
-        data=TaskResponse(
-            task_id=task.id,
-            note_id=note_request.note_id,
-            streaming=False,
-            message="Summary queued",
         )
     )
 

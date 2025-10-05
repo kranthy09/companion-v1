@@ -12,7 +12,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from datetime import datetime
 
-from .models import Note, Quiz
+from .models import Note, Quiz, QuizSubmission
 from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
 
 logger = logging.getLogger(__name__)
@@ -196,6 +196,20 @@ class NoteService:
         )
         return (max_version or 0) + 1
 
+    def create_quiz_submission(
+        self, quiz_id: int, answers: dict, score: int, total: int
+    ):
+
+        submission = QuizSubmission(
+            quiz_id=quiz_id,
+            score=score,
+            total=total,
+            answers=answers,
+        )
+        self.db.add(submission)
+        self.db.commit()
+        return submission
+
     def get_note_with_quizzes(self, note_id: int, user_id: int):
         """Get note with quizzes loaded"""
 
@@ -220,6 +234,7 @@ class NoteService:
     def get_note_with_quizzes_and_submissions(
         self, note_id: int, user_id: int
     ):
+        """Get note"""
 
         note = (
             self.db.query(Note)

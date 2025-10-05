@@ -16,6 +16,7 @@ from project.notes.models import (
     Quiz,
     QuizQuestion,
 )
+from project.notes.service import NoteService
 from project.notes.schemas import QuizQuestionData, QuizGenerationResult
 from project.ollama.service import ollama_service
 from project.ollama.streaming import streaming_service
@@ -113,53 +114,6 @@ def task_enhance_note(self, note_id: int, user_id: int):
 
     except Exception as e:
         logger.error(f"Enhancement failed: {e}")
-        raise self.retry(exc=e, countdown=60)
-
-
-@shared_task(bind=True, max_retries=3)
-def task_summarize_note(self, note_id: int, user_id: int):
-    """Summarize note (background task)"""
-    try:
-        with db_context() as session:
-            note = (
-                session.query(Note)
-                .filter(Note.id == note_id, Note.user_id == user_id)
-                .first()
-            )
-
-            if not note:
-                raise ValueError("Note not found")
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            available = loop.run_until_complete(ollama_service.health_check())
-            if not available:
-                raise Exception("Ollama service unavailable")
-
-            result = loop.run_until_complete(
-                ollama_service.enhance_note(
-                    note.title, note.content, "summary"
-                )
-            )
-            loop.close()
-
-            if not result["success"]:
-                raise Exception(result.get("error", "Summary failed"))
-
-            note.ai_summary = result["enhanced_content"]
-            note.has_ai_summary = True
-            session.commit()
-
-            return {
-                "note_id": note_id,
-                "success": True,
-                "type": "summary",
-                "summary_length": len(result["enhanced_content"]),
-            }
-
-    except Exception as e:
-        logger.error(f"Summary failed: {e}")
         raise self.retry(exc=e, countdown=60)
 
 
@@ -266,75 +220,116 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
 
 
 @shared_task
-def task_generate_quiz(note_id: int) -> dict:
-    """Generate quiz and return structured result"""
+def task_generate_quiz(note_id: int, user_id: int) -> dict:
     try:
-
         with db_context() as session:
-            note = session.query(Note).filter(Note.id == note_id).first()
+            note_service = NoteService(session)
+            note = note_service.get_note_by_id(note_id, user_id)
             if not note:
                 return {"error": "Note not found"}
 
-            context = note.content[:800]
-            prompt = f"""Create 5 quiz questions about: {context}
+            # Build context
+            context = note.content[:500]
+            if note.enhanced_versions:
+                context += (
+                    f"\n\nEnhanced: {note.enhanced_versions[0].content[:300]}"
+                )
 
-    Return ONLY valid JSON array:
-    [{{"question":"text","options":["A","B","C","D"],"correct":"A","explanation":"why"}}]
-    """
+            prompt = f"""Create exactly 5 multiple choice questions.
+
+Return ONLY a valid JSON array. No markdown, no explanations.
+
+Format:
+[{{"question":"text?","options":{{"A":"option","B":"option","C":"option","D":"option"}},"correct":"A","explanation":"why"}}]
+
+Content: {context}
+
+Important Instructions:
+Proivde JSON with correct delimiters
+Be minimalistic Yet powerful on generating valid JSON."""
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(ollama_service.generate(prompt))
+            result = loop.run_until_complete(
+                ollama_service.generate(prompt, temperature=0.3)
+            )
             loop.close()
-            response_text = result["response"]
 
-            # Try to find JSON array
+            # Clean response
+            response = result["response"].strip()
+            response = (
+                response.replace("```json", "").replace("```", "").strip()
+            )
+
+            # Extract JSON
             import re
 
-            json_match = re.search(
-                r"\[\s*\{.*?\}\s*\]", response_text, re.DOTALL
-            )
+            json_match = re.search(r"\[.*\]", response, re.DOTALL)
             if not json_match:
-                logger.error(f"No JSON found in: {response_text[:200]}")
-                return {"error": "Invalid response format"}
+                logger.error(f"No JSON array found: {response[:200]}")
+                return {"error": "Invalid format"}
 
             quiz_data = json.loads(json_match.group())
 
-            # Validate structure
             if not isinstance(quiz_data, list) or len(quiz_data) == 0:
-                return {"error": "Empty quiz data"}
+                return {"error": "Empty quiz"}
 
+            # Save
             quiz = Quiz(note_id=note_id)
             session.add(quiz)
             session.flush()
 
-            questions_response = []
-            for q in quiz_data:
+            saved_count = 0
+            for idx, q in enumerate(quiz_data, start=1):
+                opts = q.get("options", {})
+                if not isinstance(opts, dict) or len(opts) != 4:
+                    continue
+                if not all(k in opts for k in ["A", "B", "C", "D"]):
+                    continue
+
+                options_list = [f"{k}. {v}" for k, v in sorted(opts.items())]
+
                 session.add(
                     QuizQuestion(
                         quiz_id=quiz.id,
                         question_text=q["question"],
-                        options=q["options"],
+                        options=options_list,
                         correct_answer=q["correct"],
-                        explanation=q["explanation"],
+                        explanation=q.get("explanation", ""),
+                        order=idx,
                     )
                 )
-                questions_response.append(
-                    QuizQuestionData(
-                        question=q["question"], options=q["options"]
-                    ).model_dump()
-                )
+                saved_count += 1
+
+            if saved_count == 0:
+                session.rollback()
+                return {"error": "No valid questions"}
 
             session.commit()
 
+            # Return saved data
+            saved_quiz = note_service.get_quiz_by_id(quiz.id, user_id)
+            questions_response = [
+                QuizQuestionData(
+                    question_id=q.id,
+                    question=q.question_text,
+                    options={
+                        opt.split(". ")[0]: opt.split(". ", 1)[1]
+                        for opt in q.options
+                    },
+                ).model_dump()
+                for q in saved_quiz.questions
+            ]
+
             return QuizGenerationResult(
-                quiz_id=quiz.id,
+                quiz_id=saved_quiz.id,
                 questions=questions_response,
                 total=len(questions_response),
             ).model_dump()
+
     except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error: {e}, Response: {response_text[:200]}")
-        return {"error": "Failed to parse quiz"}
+        logger.error(f"JSON error at char {e.pos}: {str(e)}")
+        return {"error": f"Parse failed: {str(e)}"}
     except Exception as e:
         logger.error(f"Quiz generation failed: {e}")
         return {"error": str(e)}
