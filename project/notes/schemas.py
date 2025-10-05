@@ -210,3 +210,10 @@ class NoteSummaryResponse(BaseModel):
     id: int
     content: str
     created_at: datetime
+
+
+class NoteMetaResponse(BaseModel):
+    enhanced_count: int
+    quiz_count: int
+    question_count: int
+    summary_count: int

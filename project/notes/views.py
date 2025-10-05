@@ -28,6 +28,7 @@ from .schemas import (
     QuizSubmitResponse,
     QuizGenerateResponse,
     NoteSummaryResponse,
+    NoteMetaResponse,
 )
 
 from .service import NoteService
@@ -385,3 +386,24 @@ def get_summaries(
 
     data = [NoteSummaryResponse.model_validate(s) for s in summaries]
     return success_response(data=data)
+
+
+@notes_router.get(
+    "/{note_id}/metadata", response_model=APIResponse[NoteMetaResponse]
+)
+def get_note_meta(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    note = service.get_note_by_id(note_id, current_user.id)
+    if not note:
+        raise HTTPException(404, "Note not found")
+    meta = {
+        "enhanced_count": len(note.enhanced_versions),
+        "quiz_count": len(note.quizzes),
+        "question_count": len(note.questions),
+        "summary_count": len(note.summaries),
+    }
+    return success_response(data=NoteMetaResponse(**meta))

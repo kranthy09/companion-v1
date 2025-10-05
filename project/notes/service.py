@@ -11,7 +11,7 @@ from sqlalchemy import or_, desc, asc
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from datetime import datetime
-
+from project.notes.models import NoteSummary
 from .models import Note, Quiz, QuizSubmission
 from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
 
@@ -262,3 +262,32 @@ class NoteService:
             .order_by(NoteSummary.created_at.desc())
             .all()
         )
+
+    def get_note_meta(self, note_id: int, user_id: int):
+        """Note Meta, returns boolean for sections"""
+        note = (
+            self.db.query(Note)
+            .options(
+                joinedload(Note.enhanced_versions),
+                joinedload(Note.questions),
+                joinedload(Note.quizzes),
+            )
+            .filter(Note.id == note_id, Note.user_id == user_id)
+            .first()
+        )
+        if not note:
+            return None
+
+        summaries = (
+            self.db.query(NoteSummary)
+            .filter(NoteSummary.note_id == note_id)
+            .first()
+        )
+
+        return {
+            "note_id": note_id,
+            "has_enhanced_note": len(note.enhanced_versions) > 0,
+            "has_quiz": len(note.quizzes) > 0,
+            "has_question": len(note.questions) > 0,
+            "has_summary": summaries is not None,
+        }
