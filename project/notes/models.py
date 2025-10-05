@@ -71,6 +71,9 @@ class Note(Base):
     quizzes: Mapped[List["Quiz"]] = relationship(
         "Quiz", back_populates="note", cascade="all, delete-orphan"
     )
+    summaries: Mapped[List["NoteSummary"]] = relationship(
+        "NoteSummary", back_populates="note", cascade="all, delete-orphan"
+    )
 
     def update_word_count(self) -> None:
         """Update word count based on current content"""
@@ -159,3 +162,16 @@ class QuizSubmission(Base):
     )
 
     quiz: Mapped["Quiz"] = relationship("Quiz")
+
+
+class NoteSummary(Base):
+    __tablename__ = "note_summaries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("notes.id"))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc)
+    )
+
+    note: Mapped["Note"] = relationship("Note", back_populates="summaries")

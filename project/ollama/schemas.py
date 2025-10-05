@@ -25,3 +25,7 @@ class TaskStatusResponse(BaseModel):
     state: str
     result: Optional[dict] = None
     error: Optional[str] = None
+
+
+class SummaryResponse(BaseModel):
+    summary_id: int

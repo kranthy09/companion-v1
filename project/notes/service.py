@@ -247,3 +247,18 @@ class NoteService:
         )
 
         return note
+
+    def get_note_summaries(self, note_id: int, user_id: int):
+        """Note Summaries"""
+
+        from project.notes.models import NoteSummary
+
+        note = self.get_note_by_id(note_id, user_id)
+        if not note:
+            return None
+        return (
+            self.db.query(NoteSummary)
+            .filter(NoteSummary.note_id == note_id)
+            .order_by(NoteSummary.created_at.desc())
+            .all()
+        )

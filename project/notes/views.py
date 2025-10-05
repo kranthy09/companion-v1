@@ -27,6 +27,7 @@ from .schemas import (
     QuizResultDetail,
     QuizSubmitResponse,
     QuizGenerateResponse,
+    NoteSummaryResponse,
 )
 
 from .service import NoteService
@@ -365,3 +366,22 @@ def submit_quiz(
             else "Quiz submitted"
         ),
     )
+
+
+@notes_router.get(
+    "/summaries/{note_id}",
+    response_model=APIResponse[List[NoteSummaryResponse]],
+)
+def get_summaries(
+    request: Request,
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    service = NoteService(db)
+    summaries = service.get_note_summaries(note_id, current_user.id)
+    if summaries is None:
+        raise HTTPException(404, "Note not found")
+
+    data = [NoteSummaryResponse.model_validate(s) for s in summaries]
+    return success_response(data=data)

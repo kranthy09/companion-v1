@@ -17,11 +17,12 @@ from .tasks import (
     task_enhance_note,
     task_stream_enhance_note,
     task_stream_summarize_note,
+    task_stream_summary,
 )
 from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.database import get_db_session
-from project.notes.models import Note
+from project.notes.models import Note, Quiz
 from project.tasks.service import TaskService
 from project.ollama.streaming import streaming_service
 from project.schemas.response import (
@@ -123,7 +124,7 @@ async def enhance_note_streaming(
 
         full_text = ""
         try:
-            async for chunk in streaming_service.stream_enhance_note(
+            async for chunk in streaming_service.stream_content(
                 note.title, note.content, "improve"
             ):
                 full_text += chunk
@@ -148,8 +149,103 @@ async def enhance_note_streaming(
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
+@ollama_router.post("/summary/stream")
+async def generate_summary_stream(
+    note_request: NoteRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from sqlalchemy.orm import joinedload
+
+    note = (
+        db.query(Note)
+        .options(
+            joinedload(Note.enhanced_versions),
+            joinedload(Note.questions),
+            joinedload(Note.quizzes).joinedload(Quiz.questions),
+        )
+        .filter(
+            Note.id == note_request.note_id, Note.user_id == current_user.id
+        )
+        .first()
+    )
+    if not note:
+        raise HTTPException(404, "Note not found")
+
+    # Create tracking task
+    task = task_stream_summary.delay(note_request.note_id, current_user.id)
+    task_id = task.id
+
+    async def generate():
+        # Send task_id first
+        response = {"task_id": task_id, "status": "started"}
+        yield f"data: {json.dumps(response)}\n\n"
+
+        # Build context
+        context_parts = []
+        if note.enhanced_versions:
+            context_parts.append(
+                f"Enhanced: {note.enhanced_versions[0].content[:500]}"
+            )
+        if note.questions:
+            qa = "\n".join(
+                [
+                    f"Q: {q.question_text}\nA: {q.answer}"
+                    for q in note.questions[:5]
+                ]
+            )
+            context_parts.append(f"Q&A:\n{qa}")
+        if note.quizzes:
+            topics = set()
+            for quiz in note.quizzes:
+                topics.update(
+                    [q.question_text[:50] for q in quiz.questions[:3]]
+                )
+            context_parts.append(
+                f"Quiz topics: {', '.join(list(topics)[:10])}"
+            )
+
+        context = (
+            "\n\n".join(context_parts) if context_parts else note.content[:800]
+        )
+
+        prompt = f"""Create insightful summary with key takeaways.
+
+Context: {context}
+
+Provide:
+1. Executive summary (2-3 sentences)
+2. Top 3 key insights
+3. Main conclusion
+
+Summary:"""
+
+        full_text = ""
+        try:
+            async for chunk in streaming_service.stream_generate(prompt):
+                full_text += chunk
+                yield f" \
+                    data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+
+            from project.ollama.tasks import task_save_summary
+
+            task_save_summary.delay(note.id, full_text)
+
+            response = {
+                "chunk": "",
+                "done": True,
+                "full_text": full_text,
+                "task_id": task_id,
+            }
+            yield f"data: {json.dumps(response)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 @ollama_router.post(
-    "/summarize/stream", response_model=APIResponse[TaskResponse]
+    "/summarize/socket/stream", response_model=APIResponse[TaskResponse]
 )
 def summarize_note_streaming(
     request_obj: Request,

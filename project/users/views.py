@@ -33,9 +33,7 @@ def get_user_profile(
     """Get current user's profile information"""
     profile = UserProfileResponse.model_validate(current_user)
 
-    return success_response(
-        data=profile, message="Profile retrieved", request=request
-    )
+    return success_response(data=profile, message="Profile retrieved")
 
 
 @users_router.delete("/delete-account")

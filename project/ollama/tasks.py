@@ -155,6 +155,23 @@ def task_save_question(note_id: int, question_text: str, answer: str):
         return {"question_id": question.id}
 
 
+@shared_task(bind=True)
+def task_stream_summary(self, note_id: int, user_id: int):
+    self.update_state(state="STARTED", meta={"note_id": note_id})
+    return {"note_id": note_id, "status": "streaming"}
+
+
+@shared_task
+def task_save_summary(note_id: int, content: str):
+    from project.notes.models import NoteSummary
+
+    with db_context() as session:
+        summary = NoteSummary(note_id=note_id, content=content)
+        session.add(summary)
+        session.commit()
+        return {"summary_id": summary.id}
+
+
 @shared_task(bind=True, max_retries=3)
 def task_stream_summarize_note(self, note_id: int, user_id: int):
     """Summarize note WITH streaming"""
@@ -180,7 +197,7 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
                 nonlocal full_text
                 await broadcast.connect()
 
-                async for chunk in streaming_service.stream_enhance_note(
+                async for chunk in streaming_service.stream_content(
                     note.title, note.content, "summary"
                 ):
                     full_text += chunk

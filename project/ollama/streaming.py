@@ -43,13 +43,20 @@ class OllamaStreamingService:
             logger.error(f"Streaming failed: {e}")
             yield f"[Error: {str(e)}]"
 
-    async def stream_enhance_note(
+    async def stream_content(
         self, title: str, content: str, enhancement_type: str = "summary"
     ) -> AsyncGenerator[str, None]:
         """Stream note enhancement"""
         prompts = {
-            "summary": f"""Summarize in 2-3 sentences:\n\nTitle:
-            {title}\n\nContent:\n{content}\n\nSummary:""",
+            "summary": f"""Create insightful summary with key takeaways.
+                Title: {title}
+                Context: {content}
+
+                Provide:
+                1. Executive summary (3-5 sentences)
+                2. Top 3 key insights
+                3. Main conclusion
+            Summary:""",
             "improve": f"""Improve and expand:\n\nTitle:
             {title}\n\nContent:\n{content}\n\nEnhanced:""",
         }
