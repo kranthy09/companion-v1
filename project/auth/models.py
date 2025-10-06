@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from project.notes.models import Note
     from project.users.models import UserProfile, UserPreferences, UserActivity
     from project.tasks.models import TaskMetadata
+    from project.blog.models import BlogPost
 
 
 class User(Base):
@@ -65,6 +66,9 @@ class User(Base):
     )
     tasks: Mapped[List["TaskMetadata"]] = relationship(
         "TaskMetadata", back_populates="user", cascade="all, delete-orphan"
+    )
+    blog_posts: Mapped[List["BlogPost"]] = relationship(
+        "BlogPost", back_populates="author", cascade="all, delete-orphan"
     )
 
     @property

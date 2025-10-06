@@ -14,6 +14,7 @@ def register_routers():
     from project.auth.views import auth_router
     from project.users import users_router
     from project.notes import notes_router
+    from project.blog import blog_router
     from project.ollama import ollama_router
     from project.tasks import tasks_router
     from project.monitoring import monitoring_router
@@ -24,6 +25,7 @@ def register_routers():
     api_v1.include_router(auth_router)
     api_v1.include_router(users_router)
     api_v1.include_router(notes_router)
+    api_v1.include_router(blog_router)
     api_v1.include_router(ws_router)
     api_v1.include_router(ollama_router)
     api_v1.include_router(monitoring_router)
