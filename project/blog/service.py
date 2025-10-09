@@ -58,8 +58,8 @@ class BlogService:
             )
 
             # Set published_at if publishing
-            if post_data.status == BlogStatus.PUBLISHED:
-                post.published_at = datetime.now(timezone.utc)
+            post_data.status = BlogStatus.PUBLISHED
+            post.published_at = datetime.now(timezone.utc)
 
             self.db.add(post)
             self.db.flush()  # Get post ID before adding sections

@@ -5,7 +5,6 @@ Blog API endpoints with SSE streaming support
 """
 
 import json
-import asyncio
 import logging
 from typing import Optional
 from fastapi import (
@@ -35,8 +34,10 @@ from project.blog.schemas import (
     BlogCommentCreate,
     BlogCommentResponse,
     BlogStatus,
+    BlogGenerateRequest
 )
 from project.schemas.response import APIResponse, success_response
+from project.ollama.streaming import streaming_service
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def create_blog_post(
         post = service.create_post(
             user_id=current_user.id, post_data=post_data
         )
+        print("post: ", post.__dict__)
 
         response = BlogPostResponse.model_validate(post)
 
@@ -86,7 +88,7 @@ def get_blog_posts(
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: Optional[User] = Depends(get_current_active_user),
     db: Session = Depends(get_db_session),
 ):
     """
@@ -153,7 +155,7 @@ def get_blog_posts(
 def get_blog_post(
     post_id: int,
     increment_view: bool = Query(True),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: Optional[User] = Depends(get_current_active_user),
     db: Session = Depends(get_db_session),
 ):
     """Get a specific blog post by ID"""
@@ -333,110 +335,65 @@ def delete_blog_post(
         )
 
 
-# SSE Streaming endpoint
-@blog_router.get("/posts/{post_id}/stream")
-async def stream_blog_post(
-    post_id: int,
-    current_user: Optional[User] = Depends(get_optional_user),
-    db: Session = Depends(get_db_session),
+@blog_router.post("/generate/stream")
+async def stream_blog_generation(
+    request: BlogGenerateRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db_session)
 ):
     """
-    Stream blog post content using Server-Sent Events (SSE)
-    Returns post content in chunks for progressive rendering
+    Stream AI-generated blog improvements via SSE
+
+    Args:
+        blog_id: ID of blog post to enhance
+        enhancement_type: Type of enhancement (improve/expand/summarize)
+
+    Returns:
+        Server-Sent Events stream with generated content
     """
     service = BlogService(db)
 
-    # Get the post
-    post = service.get_post_by_id(post_id)
+    # Get blog post
+    blog = service.get_post_by_id(request.blog_id)
 
-    if not post:
+    if not blog:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Blog post not found"
         )
 
-    # Check authorization
-    if post.status != BlogStatus.PUBLISHED and (
-        not current_user or current_user.id != post.author_id
-    ):
+    # Check ownership
+    if blog.author_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to view this post",
+            detail="Not authorized to modify this post"
         )
 
-    async def generate_stream():
-        """Generate SSE stream for blog content"""
+    async def stream():
+        """Generate SSE stream"""
         try:
-            # Stream metadata
+            # Send initial metadata
             yield f"""data: {json.dumps({
-                'type': 'metadata',
-                'post_id': post.id,
-                'title': post.title,
-                'author': post.author.full_name,
-                'published_at': post.published_at.isoformat()
-                    if post.published_at else None,
-                'read_time_minutes': post.read_time_minutes
-            })}\n\n""" ""
+                'type': 'start',
+                'blog_id': blog.id,
+                'title': blog.title
+            })}\n\n"""
 
-            await asyncio.sleep(0.1)
-
-            # Stream title in chunks
-            title_chunks = [
-                post.title[i: i + 10] for i in range(0, len(post.title), 10)
-            ]
-            for chunk in title_chunks:
+            # Stream enhanced content
+            async for chunk in streaming_service.stream_blog_content(
+                blog.title,
+                blog.content,
+                request.enhancement_type
+            ):
                 yield f"""data: {json.dumps({
-                    'type': 'title',
+                    'type': 'chunk',
                     'content': chunk
                 })}\n\n"""
-                await asyncio.sleep(0.05)
 
-            # Stream excerpt if exists
-            if post.excerpt:
-                yield f"""data: {json.dumps({
-                    'type': 'excerpt',
-                    'content': post.excerpt
-                })}\n\n"""
-                await asyncio.sleep(0.1)
-
-            # Stream main content in chunks
-            content_words = post.content.split()
-            chunk_size = 20  # Words per chunk
-
-            for i in range(0, len(content_words), chunk_size):
-                chunk = " ".join(content_words[i: i + chunk_size])
-                yield f"""data: {json.dumps({
-                    'type': 'content',
-                    'content': chunk + ' '
-                })}\n\n"""
-                await asyncio.sleep(0.1)
-
-            # Stream sections if any
-            if post.sections:
-                for section in post.sections:
-                    # Stream section header
-                    yield f"""data: {json.dumps({
-                        'type': 'section_header',
-                        'section_id': section.id,
-                        'title': section.title,
-                        'section_type': section.section_type
-                    })}\n\n"""
-                    await asyncio.sleep(0.1)
-
-                    # Stream section content
-                    section_words = section.content.split()
-                    for i in range(0, len(section_words), chunk_size):
-                        chunk = " ".join(section_words[i: i + chunk_size])
-                        yield f"""data: {json.dumps({
-                            'type': 'section_content',
-                            'section_id': section.id,
-                            'content': chunk + ' '
-                        })}\n\n"""
-                        await asyncio.sleep(0.1)
-
-            # Stream completion
+            # Send completion
             yield f"""data: {json.dumps({
                 'type': 'complete',
-                'post_id': post.id
+                'blog_id': blog.id
             })}\n\n"""
 
         except Exception as e:
@@ -447,17 +404,18 @@ async def stream_blog_post(
             })}\n\n"""
 
     return StreamingResponse(
-        generate_stream(),
+        stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+            "X-Accel-Buffering": "no"
+        }
     )
 
-
 # Categories endpoint
+
+
 @blog_router.get(
     "/categories", response_model=APIResponse[list[BlogCategoryResponse]]
 )

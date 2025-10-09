@@ -26,6 +26,7 @@ class BaseConfig:
     DATABASE_TEST_URL: str = os.environ.get("DATABASE_TEST_URL")
     FASTAPI_CONFIG: str = os.environ.get("FASTAPI_CONFIG")
     DATABASE_CONNECT_DICT: dict = {}
+    ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY")
 
     # Ollama Configuration
     OLLAMA_BASE_URL: str = os.environ.get(

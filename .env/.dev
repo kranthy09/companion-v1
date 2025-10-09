@@ -1,5 +1,6 @@
 # .env/.dev-sample
 
+ANTHROPIC_API_KEY=**
 FASTAPI_CONFIG=development
 DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
 DATABASE_TEST_URL=sqlite:///./test.db

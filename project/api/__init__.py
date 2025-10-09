@@ -20,6 +20,7 @@ def register_routers():
     from project.monitoring import monitoring_router
     from project.health import health_router
     from project.ws import ws_router
+    from project.api.mcp import mcp_router  # Add this import
 
     # Register to v1
     api_v1.include_router(auth_router)
@@ -30,6 +31,7 @@ def register_routers():
     api_v1.include_router(ollama_router)
     api_v1.include_router(monitoring_router)
     api_v1.include_router(tasks_router)
+    api_v1.include_router(mcp_router)  # Add this line
 
     # Health at root
     api_root.include_router(health_router)

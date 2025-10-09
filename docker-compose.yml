@@ -32,7 +32,8 @@ services:
   redis:
     image: redis:7-alpine
     networks:
-        - companion-network
+      - companion-network
+
   ollama:
     image: ollama/ollama:latest
     container_name: companion_ollama

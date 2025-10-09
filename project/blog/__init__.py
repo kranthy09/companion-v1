@@ -11,5 +11,3 @@ blog_router = APIRouter(prefix="/blog", tags=["Blog"])
 
 # Import views to register routes
 from . import views, models  # noqa
-
-__all__ = ["blog_router"]

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "companion": {
+      "command": "python",
+      "args": ["-m", "project.mcp_server"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}

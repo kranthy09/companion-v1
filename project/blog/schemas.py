@@ -139,7 +139,6 @@ class BlogPostResponse(BlogPostBase):
 
     # Nested relationships
     sections: Optional[List[BlogSectionResponse]] = None
-    author: Optional[dict] = None
     category: Optional[dict] = None
     comments_count: Optional[int] = None
 
@@ -236,3 +235,9 @@ class BlogStreamChunk(BaseModel):
     content: str
     metadata: Optional[dict] = None
     is_complete: bool = False
+
+
+class BlogGenerateRequest(BaseModel):
+    """Request schema for blog generation"""
+    blog_id: int
+    enhancement_type: str = "improve"  # improve, expand, summarize
