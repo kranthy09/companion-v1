@@ -14,6 +14,7 @@ from datetime import datetime
 from project.notes.models import NoteSummary
 from .models import Note, Quiz, QuizSubmission
 from .schemas import NoteCreate, NoteUpdate, NoteQueryParams
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class NoteService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_note(self, user_id: str, note_data: NoteCreate) -> Note:
+    def create_note(self, user_id: UUID, note_data: NoteCreate) -> Note:
         """Create a new note for a user"""
         print("user_id: ", user_id)
         word_count = len(note_data.content.split(" "))
@@ -49,7 +50,7 @@ class NoteService:
         finally:
             self.db.close()
 
-    def get_note_by_id(self, note_id: int, user_id: int) -> Optional[Note]:
+    def get_note_by_id(self, note_id: int, user_id: UUID) -> Optional[Note]:
         """Get a specific note by ID for a user"""
         return (
             self.db.query(Note)
@@ -58,7 +59,7 @@ class NoteService:
         )
 
     def get_user_notes(
-        self, user_id: int, query_params: NoteQueryParams
+        self, user_id: UUID, query_params: NoteQueryParams
     ) -> tuple[List[Note], int]:
         """Get paginated notes for a user with optional filters"""
         query = self.db.query(Note).filter(Note.user_id == user_id)
@@ -102,7 +103,7 @@ class NoteService:
         return notes, total_count
 
     def update_note(
-        self, note_id: int, user_id: int, note_data: NoteUpdate
+        self, note_id: int, user_id: UUID, note_data: NoteUpdate
     ) -> Optional[Note]:
         """Update an existing note"""
         note = self.get_note_by_id(note_id, user_id)
@@ -126,7 +127,7 @@ class NoteService:
         self.db.refresh(note)
         return note
 
-    def delete_note(self, note_id: int, user_id: int) -> bool:
+    def delete_note(self, note_id: int, user_id: UUID) -> bool:
         """Delete a note"""
         note = self.get_note_by_id(note_id, user_id)
         if not note:
@@ -136,7 +137,7 @@ class NoteService:
         self.db.commit()
         return True
 
-    def get_user_notes_stats(self, user_id: int) -> dict:
+    def get_user_notes_stats(self, user_id: UUID) -> dict:
         """Get statistics about user's notes"""
         notes = self.db.query(Note).filter(Note.user_id == user_id).all()
         print("notes: ", notes)
@@ -166,7 +167,7 @@ class NoteService:
             "tags_count": len(all_tags),
         }
 
-    def get_note_questions(self, note_id: int, user_id: int) -> List:
+    def get_note_questions(self, note_id: int, user_id: UUID) -> List:
         """Get all questions for a note"""
 
         note = self.get_note_by_id(note_id, user_id)
@@ -174,7 +175,7 @@ class NoteService:
             return None
         return note.questions
 
-    def get_enhanced_versions(self, note_id: int, user_id: int) -> List:
+    def get_enhanced_versions(self, note_id: int, user_id: UUID) -> List:
         note = (
             self.db.query(Note)
             .options(joinedload(Note.enhanced_versions))
@@ -210,7 +211,7 @@ class NoteService:
         self.db.commit()
         return submission
 
-    def get_note_with_quizzes(self, note_id: int, user_id: int):
+    def get_note_with_quizzes(self, note_id: int, user_id: UUID):
         """Get note with quizzes loaded"""
 
         return (
@@ -220,7 +221,7 @@ class NoteService:
             .first()
         )
 
-    def get_quiz_by_id(self, quiz_id: int, user_id: int):
+    def get_quiz_by_id(self, quiz_id: int, user_id: UUID):
         """Get quiz with questions for user's note"""
 
         return (
@@ -232,7 +233,7 @@ class NoteService:
         )
 
     def get_note_with_quizzes_and_submissions(
-        self, note_id: int, user_id: int
+        self, note_id: int, user_id: UUID
     ):
         """Get note"""
 
@@ -248,7 +249,7 @@ class NoteService:
 
         return note
 
-    def get_note_summaries(self, note_id: int, user_id: int):
+    def get_note_summaries(self, note_id: int, user_id: UUID):
         """Note Summaries"""
 
         from project.notes.models import NoteSummary
@@ -263,7 +264,7 @@ class NoteService:
             .all()
         )
 
-    def get_note_meta(self, note_id: int, user_id: int):
+    def get_note_meta(self, note_id: int, user_id: UUID):
         """Note Meta, returns boolean for sections"""
         note = (
             self.db.query(Note)

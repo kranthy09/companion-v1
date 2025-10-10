@@ -6,7 +6,7 @@ from anthropic import Anthropic
 import os
 import json
 
-from project.auth.dependencies import get_current_active_user
+from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.blog.service import BlogService
 from project.database import get_db_session
@@ -596,7 +596,7 @@ async def execute_tool(name: str, args: dict, user: User, db: Session) -> str:
 @mcp_router.post("/chat")
 async def chat(
     request: ChatRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
     """Chat with Claude via MCP"""
@@ -675,7 +675,7 @@ async def chat(
 
 @mcp_router.get("/tools")
 async def get_tools(
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_user)
 ):
     """Get available MCP tools"""
     tools = [

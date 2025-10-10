@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, DateTime, ForeignKey, JSON, Index
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
+from uuid import UUID
 
 from project.database import Base
 
@@ -20,7 +21,7 @@ class TaskMetadata(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     task_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
 
     # Task info
     task_type: Mapped[str] = mapped_column(

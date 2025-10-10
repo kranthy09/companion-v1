@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Text, DateTime, ForeignKey
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
+from uuid import UUID
 
 from project.database import Base
 
@@ -21,7 +22,7 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), unique=True)
 
     # Profile fields
     bio: Mapped[Optional[str]] = mapped_column(Text)
@@ -43,7 +44,7 @@ class UserPreferences(Base):
     __tablename__ = "user_preferences"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), unique=True)
 
     # Preference fields with defaults
     email_notifications: Mapped[int] = mapped_column(
@@ -68,7 +69,7 @@ class UserActivity(Base):
     __tablename__ = "user_activities"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
 
     activity_type: Mapped[str] = mapped_column(String(100))
     activity_data: Mapped[Optional[str]] = mapped_column(Text)  # JSON data

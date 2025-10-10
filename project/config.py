@@ -122,6 +122,10 @@ class BaseConfig:
             "args": (30,),  # Cleanup tasks older than 30 days
         },
     }
+    SUPABASE_URL: str = os.environ.get("SUPABASE_URL")
+    SUPABASE_ANON_KEY: str = os.environ.get("SUPABASE_ANON_KEY")
+    SUPABASE_SERVICE_KEY: str = os.environ.get(
+        "SUPABASE_SERVICE_KEY")  # For admin operations
 
 
 class DevelopmentConfig(BaseConfig):

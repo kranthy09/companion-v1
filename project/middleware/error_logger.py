@@ -9,6 +9,7 @@ import traceback
 import json
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 
 class ErrorLogger:
@@ -30,7 +31,7 @@ class ErrorLogger:
         self,
         error: Exception,
         request_id: str = None,
-        user_id: str = None,
+        user_id: UUID = None,
         endpoint: str = None,
     ):
         """Log detailed error information"""

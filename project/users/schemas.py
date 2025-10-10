@@ -7,6 +7,7 @@ User App API request and response schemas with modern Pydantic v2
 from datetime import datetime
 from pydantic import BaseModel, HttpUrl, ConfigDict
 from typing import Optional, Any
+from uuid import UUID
 
 
 class UserProfileSchema(BaseModel):
@@ -94,7 +95,7 @@ class UserPreferencesResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: int
+    user_id: UUID
     email_notifications: int
     theme: str
     language: str
@@ -115,7 +116,7 @@ class TaskQueueResponse(BaseModel):
 
 
 class MyTasksResponse(BaseModel):
-    user_id: int
+    user_id: UUID
     email: str
     message: str
     tasks: list[dict]

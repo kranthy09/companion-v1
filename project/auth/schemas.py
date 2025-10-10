@@ -7,6 +7,7 @@ Updated Auth schemas for integer IDs
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
+from uuid import UUID
 
 
 class LoginRequest(BaseModel):
@@ -51,7 +52,7 @@ class UserRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int  # Changed from UUID to int
+    id: UUID  # Changed from UUID to int
     email: EmailStr
     first_name: Optional[str] = None
     last_name: Optional[str] = None

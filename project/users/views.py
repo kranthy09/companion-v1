@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from . import users_router
 from project.database import get_db_session
 from project.auth.dependencies import (
-    get_current_active_user,
+    get_current_user,
 )
 from project.auth.models import User
 from project.users.schemas import (
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 @users_router.get("/profile", response_model=APIResponse[UserProfileResponse])
 def get_user_profile(
     request: Request,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Get current user's profile information"""
     profile = UserProfileResponse.model_validate(current_user)
@@ -38,7 +38,7 @@ def get_user_profile(
 
 @users_router.delete("/delete-account")
 def delete_account(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db_session),
 ):
     """

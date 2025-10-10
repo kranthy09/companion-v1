@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+from uuid import UUID
 
 
 class BlogStatus(str, Enum):
@@ -191,7 +192,7 @@ class BlogCommentResponse(BaseModel):
 
     id: int
     post_id: int
-    user_id: int
+    user_id: UUID
     content: str
     is_approved: bool
     created_at: datetime

@@ -8,6 +8,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from project.database import db_context
 from project.tasks.service import TaskService
+from uuid import UUID
 
 logger = get_task_logger(__name__)
 
@@ -36,7 +37,7 @@ def cleanup_old_tasks(days: int = 7):
 
 
 @shared_task(name="cleanup_user_tasks")
-def cleanup_user_tasks(user_id: int, days: int = 30):
+def cleanup_user_tasks(user_id: UUID, days: int = 30):
     """
     Cleanup tasks for a specific user older than N days
 

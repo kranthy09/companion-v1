@@ -22,6 +22,7 @@ from project.blog.schemas import (
     BlogQueryParams,
     BlogStatus,
 )
+from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class BlogService:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_post(self, user_id: int, post_data: BlogPostCreate) -> BlogPost:
+    def create_post(
+        self, user_id: UUID, post_data: BlogPostCreate
+    ) -> BlogPost:
         """Create a new blog post with sections"""
         try:
             # Calculate read time
@@ -187,7 +190,7 @@ class BlogService:
         return posts, total
 
     def update_post(
-        self, post_id: int, user_id: int, update_data: BlogPostUpdate
+        self, post_id: int, user_id: UUID, update_data: BlogPostUpdate
     ) -> Optional[BlogPost]:
         """Update an existing post"""
         post = self.get_post_by_id(post_id)
@@ -229,7 +232,7 @@ class BlogService:
             logger.error(f"Failed to update post: {e}")
             raise
 
-    def delete_post(self, post_id: int, user_id: int) -> bool:
+    def delete_post(self, post_id: int, user_id: UUID) -> bool:
         """Delete a post (soft delete by archiving)"""
         post = self.get_post_by_id(post_id)
 
@@ -290,7 +293,7 @@ class BlogService:
     def add_comment(
         self,
         post_id: int,
-        user_id: int,
+        user_id: UUID,
         content: str,
         parent_id: Optional[int] = None,
     ) -> BlogComment:

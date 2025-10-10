@@ -4,6 +4,7 @@ project/blog/models.py
 Production-grade Blog models with relationships
 """
 
+from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
@@ -153,7 +154,7 @@ class BlogComment(Base):
     post_id: Mapped[int] = mapped_column(
         ForeignKey("blog_posts.id"), index=True
     )
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)
     parent_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("blog_comments.id"), nullable=True
     )

@@ -9,6 +9,9 @@ from sqlalchemy import String, Boolean, DateTime, func
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 from project.database import Base
+from uuid import UUID, uuid4
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+
 
 if TYPE_CHECKING:
     from project.notes.models import Note
@@ -21,11 +24,12 @@ class User(Base):
     __tablename__ = "users"
 
     # Auto-incrementing primary key
-    id: Mapped[int] = mapped_column(primary_key=True)
-
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     # Required fields
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255))
+    hashed_password: Mapped[Optional[str]] = mapped_column(
+        String(255))  # Make nullable
 
     # Optional profile fields
     first_name: Mapped[Optional[str]] = mapped_column(String(100))
@@ -33,9 +37,9 @@ class User(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(20))
 
     # Status fields with defaults
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_superuser: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Auto-managed timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -70,6 +74,9 @@ class User(Base):
     blog_posts: Mapped[List["BlogPost"]] = relationship(
         "BlogPost", back_populates="author", cascade="all, delete-orphan"
     )
+    external_id: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, index=True
+    )  # Supabase user ID
 
     @property
     def full_name(self) -> str:

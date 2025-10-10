@@ -4,6 +4,7 @@ companion/project/notes/models.py
 Updated Notes Model with separate AI fields
 """
 
+from project.database import Base
 from datetime import datetime, timezone
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import (
@@ -15,8 +16,8 @@ from sqlalchemy import (
     Integer,
 )
 from typing import Optional, List, TYPE_CHECKING
+from uuid import UUID
 
-from project.database import Base
 
 if TYPE_CHECKING:
     from project.auth.models import User
@@ -26,7 +27,7 @@ class Note(Base):
     __tablename__ = "notes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"))
 
     # Content fields
     title: Mapped[str] = mapped_column(String(255))

@@ -7,6 +7,7 @@ import json
 import sys
 from datetime import datetime
 from typing import Any, Dict
+from uuid import UUID
 
 
 class JSONFormatter(logging.Formatter):
@@ -65,7 +66,7 @@ class RequestLogger:
     """Helper to log with request context"""
 
     def __init__(
-        self, logger: logging.Logger, request_id: str, user_id: int = None
+        self, logger: logging.Logger, request_id: str, user_id: UUID = None
     ):
         self.logger = logger
         self.request_id = request_id

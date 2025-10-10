@@ -8,6 +8,7 @@ from celery import shared_task
 from celery.signals import task_prerun, task_postrun, task_failure
 from celery.utils.log import get_task_logger
 from asgiref.sync import async_to_sync
+from uuid import UUID
 
 from project.database import db_context
 from project.notes.models import (
@@ -70,7 +71,7 @@ def task_failure_handler(task_id, exception, traceback, **extra):
 
 
 @shared_task(bind=True, max_retries=3)
-def task_enhance_note(self, note_id: int, user_id: int):
+def task_enhance_note(self, note_id: int, user_id: UUID):
     """Enhance note (background task)"""
     try:
         with db_context() as session:
@@ -118,7 +119,7 @@ def task_enhance_note(self, note_id: int, user_id: int):
 
 
 @shared_task(bind=True)
-def task_stream_enhance_note(self, note_id: int, user_id: int):
+def task_stream_enhance_note(self, note_id: int, user_id: UUID):
     """Track streaming enhancement task"""
     self.update_state(state="STARTED", meta={"note_id": note_id})
     # Actual work done in streaming endpoint
@@ -156,7 +157,7 @@ def task_save_question(note_id: int, question_text: str, answer: str):
 
 
 @shared_task(bind=True)
-def task_stream_summary(self, note_id: int, user_id: int):
+def task_stream_summary(self, note_id: int, user_id: UUID):
     self.update_state(state="STARTED", meta={"note_id": note_id})
     return {"note_id": note_id, "status": "streaming"}
 
@@ -173,7 +174,7 @@ def task_save_summary(note_id: int, content: str):
 
 
 @shared_task(bind=True, max_retries=3)
-def task_stream_summarize_note(self, note_id: int, user_id: int):
+def task_stream_summarize_note(self, note_id: int, user_id: UUID):
     """Summarize note WITH streaming"""
     task_id = self.request.id
 
@@ -237,7 +238,7 @@ def task_stream_summarize_note(self, note_id: int, user_id: int):
 
 
 @shared_task
-def task_generate_quiz(note_id: int, user_id: int) -> dict:
+def task_generate_quiz(note_id: int, user_id: UUID) -> dict:
     try:
         with db_context() as session:
             note_service = NoteService(session)

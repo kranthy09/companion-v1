@@ -13,19 +13,7 @@ services:
       - .env/.dev
     depends_on:
       - redis
-      - db
       - ollama
-    networks:
-      - companion-network
-
-  db:
-    image: postgres:16-alpine
-    volumes:
-      - companion_postgres_data:/var/lib/postgresql/data/
-    environment:
-      - POSTGRES_DB=companion_db
-      - POSTGRES_USER=companion_user
-      - POSTGRES_PASSWORD=companion_password_123
     networks:
       - companion-network
 
@@ -75,7 +63,6 @@ services:
       - .env/.dev
     depends_on:
       - redis
-      - db
       - ollama
     networks:
       - companion-network
@@ -92,7 +79,6 @@ services:
       - .env/.dev
     depends_on:
       - redis
-      - db
     networks:
       - companion-network
 
@@ -110,7 +96,6 @@ services:
       - 5557:5555
     depends_on:
       - redis
-      - db
     networks:
       - companion-network
 
@@ -129,7 +114,6 @@ services:
       - companion-network
 
 volumes:
-  companion_postgres_data:
   companion_ollama_data:
 
 networks:

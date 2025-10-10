@@ -1,14 +1,15 @@
 """
-project/auth/views.py - Authentication endpoints
+project/auth/views.py
+
+Authentication endpoints using Supabase + service layer
 """
 
 import secrets
 import logging
-from datetime import datetime
-from fastapi import Response, Request, Depends, HTTPException
-from fastapi.security import OAuth2PasswordRequestForm
+from uuid import UUID
+
+from fastapi import Response, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from jose import jwt
 
 from . import auth_router
 from project.config import settings
@@ -17,29 +18,24 @@ from project.auth.models import User
 from project.auth.schemas import (
     UserCreate,
     UserRead,
-    Token,
-    AuthResponse,
     LoginRequest,
     LoginResponse,
     SessionResponse,
+    AuthResponse,
+    Token,
 )
-from project.auth.utils import (
-    verify_password,
-    get_password_hash,
-    create_token_pair,
-    blacklist_token,
-)
-from project.auth.dependencies import get_current_active_user
-from project.schemas.response import (
-    APIResponse,
-    success_response,
-)
+from project.auth.service import UserService
+from project.auth.supabase_client import supabase
+from project.auth.dependencies import get_current_user
+from project.schemas.response import APIResponse, success_response
 
 logger = logging.getLogger(__name__)
 
 
-def set_auth_cookies(response: Response, access_token: str, csrf_token: str):
-    """Set auth cookies"""
+def set_auth_cookies(
+    response: Response, access_token: str, csrf_token: str
+) -> None:
+    """Set secure HttpOnly cookies for authentication"""
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -64,135 +60,120 @@ def set_auth_cookies(response: Response, access_token: str, csrf_token: str):
 
 @auth_router.post("/register", response_model=APIResponse[AuthResponse])
 def register(
-    request: Request,
     response: Response,
     user_data: UserCreate,
     session: Session = Depends(get_db_session),
 ):
-    """Register new user with JSON body"""
+    """Register user via Supabase and sync to local DB"""
     try:
-        existing = (
-            session.query(User).filter(User.email == user_data.email).first()
-        )
-        if existing:
-            logger.warning(
-                f"Registration attempt with existing email: {user_data.email}"
+        # 1. Create in Supabase
+        supabase_response = supabase.auth.sign_up({
+            "email": user_data.email,
+            "password": user_data.password,
+        })
+
+        if not supabase_response.user or not supabase_response.session:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Registration failed",
             )
-            raise HTTPException(400, "Email already registered")
 
-        user = User(
-            email=user_data.email,
-            hashed_password=get_password_hash(user_data.password),
-            first_name=user_data.first_name,
-            last_name=user_data.last_name,
-            phone=user_data.phone,
+        # 2. Create in local DB via service
+        user_service = UserService(session)
+        user = user_service.create_from_supabase(
+            supabase_response.user.id, user_data
         )
 
-        session.add(user)
-        session.commit()
-        session.refresh(user)
-
-        tokens = create_token_pair(user.email)
+        # 3. Set secure cookies
         csrf_token = secrets.token_urlsafe(32)
+        set_auth_cookies(
+            response, supabase_response.session.access_token, csrf_token
+        )
 
-        set_auth_cookies(response, tokens["access_token"], csrf_token)
-
-        logger.info(f"User registered: {user.email}")
+        logger.info(f"Registration successful: {user.email}")
 
         return success_response(
             data=AuthResponse(
                 user=UserRead.model_validate(user),
                 token=Token(
-                    access_token=tokens["access_token"],
-                    refresh_token=tokens["refresh_token"],
+                    access_token=supabase_response.session.access_token,
+                    refresh_token=supabase_response.session.refresh_token,
                 ),
             ),
             message="Registration successful",
         )
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Registration failed: {str(e)}")
-        session.rollback()
-        raise HTTPException(500, "Registration failed")
+        logger.error(f"Registration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed",
+        )
 
 
 @auth_router.post("/login", response_model=APIResponse[LoginResponse])
 def login(
-    request: Request,
     response: Response,
     credentials: LoginRequest,
     session: Session = Depends(get_db_session),
 ):
-    """Login with JSON body (for frontend)"""
+    """Login via Supabase"""
     try:
-        user = (
-            session.query(User)
-            .filter(User.email == credentials.username)
-            .first()
-        )
+        # Authenticate with Supabase
+        supabase_response = supabase.auth.sign_in_with_password({
+            "email": credentials.username,
+            "password": credentials.password,
+        })
 
-        if not user or not verify_password(
-            credentials.password, user.hashed_password
-        ):
-            logger.warning(f"Failed login: {credentials.username}")
+        if not supabase_response.session:
             raise HTTPException(401, "Invalid credentials")
 
+        # Get or create user in local DB
+        user_service = UserService(session)
+        user = user_service.get_by_email(credentials.username)
+
+        if not user:
+            # Auto-create from Supabase
+            logger.info(
+                f"Auto-creating user from Supabase: {credentials.username}")
+            user = User(
+                id=UUID(supabase_response.user.id),
+                email=credentials.username,
+                is_active=True,
+            )
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+
         if not user.is_active:
-            logger.warning(f"Inactive user login: {user.email}")
             raise HTTPException(403, "Account is inactive")
 
-        tokens = create_token_pair(user.email)
+        # Set cookies
         csrf_token = secrets.token_urlsafe(32)
+        set_auth_cookies(
+            response, supabase_response.session.access_token, csrf_token)
 
-        set_auth_cookies(response, tokens["access_token"], csrf_token)
-
-        logger.info(f"User logged in: {user.email}")
+        logger.info(f"Login successful: {user.email}")
 
         return success_response(
             data=LoginResponse(
-                access_token=tokens["access_token"],
-                refresh_token=tokens["refresh_token"],
+                access_token=supabase_response.session.access_token,
+                refresh_token=supabase_response.session.refresh_token,
             ),
             message="Login successful",
         )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Login failed: {str(e)}")
-        raise HTTPException(500, "Login failed")
-
-
-@auth_router.post("/token", response_model=Token)
-def token_for_swagger(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    session: Session = Depends(get_db_session),
-):
-    """OAuth2 token endpoint for /docs (form-encoded)"""
-    user = session.query(User).filter(User.email == form_data.username).first()
-
-    if not user or not verify_password(
-        form_data.password, user.hashed_password
-    ):
+        logger.error(f"Login error: {e}")
         raise HTTPException(401, "Invalid credentials")
-
-    if not user.is_active:
-        raise HTTPException(403, "Account is inactive")
-
-    tokens = create_token_pair(user.email)
-
-    return Token(
-        access_token=tokens["access_token"],
-        refresh_token=tokens["refresh_token"],
-    )
 
 
 @auth_router.get("/session", response_model=APIResponse[SessionResponse])
-def get_session(
-    request: Request,
-    current_user: User = Depends(get_current_active_user),
-):
-    """Get current session"""
+def get_session(current_user: User = Depends(get_current_user)):
+    """Get current authenticated session"""
     return success_response(
         data=SessionResponse(
             authenticated=True,
@@ -203,26 +184,13 @@ def get_session(
 
 
 @auth_router.post("/logout", response_model=APIResponse[dict])
-def logout(
-    request: Request,
-    response: Response,
-    current_user: User = Depends(get_current_active_user),
-):
-    """Logout and revoke token"""
+def logout(response: Response):
+    """Logout and clear cookies"""
     try:
-        token = request.cookies.get("access_token")
-        if not token:
-            auth_header = request.headers.get("Authorization")
-            if auth_header:
-                token = auth_header.split(" ")[1]
+        # Sign out from Supabase
+        supabase.auth.sign_out()
 
-        if token:
-            payload = jwt.decode(
-                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-            )
-            exp = datetime.fromtimestamp(payload["exp"])
-            blacklist_token(token, exp)
-
+        # Clear cookies
         response.delete_cookie(
             key="access_token", path="/", domain=settings.COOKIE_DOMAIN
         )
@@ -230,12 +198,53 @@ def logout(
             key="csrf_token", path="/", domain=settings.COOKIE_DOMAIN
         )
 
-        logger.info(f"User logged out: {current_user.email}")
+        logger.info("User logged out")
 
         return success_response(
             data={"logged_out": True},
             message="Logged out successfully",
         )
+
     except Exception as e:
-        logger.error(f"Logout failed: {str(e)}")
-        raise HTTPException(500, "Logout failed")
+        logger.error(f"Logout error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Logout failed",
+        )
+
+
+@auth_router.post("/refresh", response_model=APIResponse[LoginResponse])
+def refresh_token(
+    response: Response,
+    refresh_token: str,
+):
+    """Refresh access token using refresh token"""
+    try:
+        supabase_response = supabase.auth.refresh_session(refresh_token)
+
+        if not supabase_response.session:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token refresh failed",
+            )
+
+        # Update cookie with new access token
+        csrf_token = secrets.token_urlsafe(32)
+        set_auth_cookies(
+            response, supabase_response.session.access_token, csrf_token
+        )
+
+        return success_response(
+            data=LoginResponse(
+                access_token=supabase_response.session.access_token,
+                refresh_token=supabase_response.session.refresh_token,
+            ),
+            message="Token refreshed",
+        )
+
+    except Exception as e:
+        logger.error(f"Token refresh error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token refresh failed",
+        )

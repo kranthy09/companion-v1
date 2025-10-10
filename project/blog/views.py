@@ -18,10 +18,7 @@ from sqlalchemy.orm import Session
 
 from . import blog_router
 from project.database import get_db_session
-from project.auth.dependencies import (
-    get_current_active_user,
-    get_optional_user,
-)
+from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.blog.service import BlogService
 from project.blog.schemas import (
@@ -50,7 +47,7 @@ logger = logging.getLogger(__name__)
 )
 def create_blog_post(
     post_data: BlogPostCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Create a new blog post"""
@@ -88,7 +85,7 @@ def get_blog_posts(
     sort_order: str = Query("desc"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
-    current_user: Optional[User] = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """
@@ -155,7 +152,7 @@ def get_blog_posts(
 def get_blog_post(
     post_id: int,
     increment_view: bool = Query(True),
-    current_user: Optional[User] = Depends(get_current_active_user),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Get a specific blog post by ID"""
@@ -193,7 +190,7 @@ def get_blog_post(
 def get_blog_post_by_slug(
     slug: str,
     increment_view: bool = Query(True),
-    current_user: Optional[User] = Depends(get_optional_user),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Get a specific blog post by slug"""
@@ -229,7 +226,7 @@ def get_blog_post_by_slug(
 def update_blog_post(
     post_id: int,
     update_data: BlogPostUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Update an existing blog post (full update)"""
@@ -268,7 +265,7 @@ def update_blog_post(
 def patch_blog_post(
     post_id: int,
     update_data: BlogPostUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Partially update a blog post"""
@@ -305,7 +302,7 @@ def patch_blog_post(
 @blog_router.delete("/posts/{post_id}", response_model=APIResponse[dict])
 def delete_blog_post(
     post_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Delete (archive) a blog post"""
@@ -338,7 +335,7 @@ def delete_blog_post(
 @blog_router.post("/generate/stream")
 async def stream_blog_generation(
     request: BlogGenerateRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session)
 ):
     """
@@ -443,7 +440,7 @@ def get_categories(db: Session = Depends(get_db_session)):
 def add_comment(
     post_id: int,
     comment_data: BlogCommentCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Add a comment to a blog post"""

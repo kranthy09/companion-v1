@@ -2,7 +2,9 @@
 
 ANTHROPIC_API_KEY=**
 FASTAPI_CONFIG=development
-DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
+# DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
+# DATABASE_URL=postgresql://postgres:companion-v1@db.dkgfykaqwupvlvntgvwg.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres.dkgfykaqwupvlvntgvwg:companion-v1@aws-1-us-east-1.pooler.supabase.com:5432/postgres
 DATABASE_TEST_URL=sqlite:///./test.db
 # Security - CHANGE THESE IN PRODUCTION
 

@@ -5,6 +5,7 @@ project/tasks/service.py - Task management service
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+from uuid import UUID
 
 from .models import TaskMetadata
 
@@ -18,7 +19,7 @@ class TaskService:
     def create_task(
         self,
         task_id: str,
-        user_id: int,
+        user_id: UUID,
         task_type: str,
         task_name: str,
         resource_type: Optional[str] = None,
@@ -87,7 +88,7 @@ class TaskService:
 
     def get_user_tasks(
         self,
-        user_id: int,
+        user_id: UUID,
         status: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -107,7 +108,7 @@ class TaskService:
             .all()
         )
 
-    def delete_task(self, task_id: str, user_id: int) -> bool:
+    def delete_task(self, task_id: str, user_id: UUID) -> bool:
         """Delete task metadata"""
         task = self.get_task(task_id, user_id)
 
@@ -135,7 +136,7 @@ class TaskService:
         return deleted
 
     def get_task_count(
-        self, user_id: int, status: Optional[str] = None
+        self, user_id: UUID, status: Optional[str] = None
     ) -> int:
         """Get count of user's tasks"""
         query = self.db.query(TaskMetadata).filter(
