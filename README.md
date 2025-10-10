@@ -246,6 +246,171 @@ fastapi-celery-project/
 └── requirements.txt           # Python dependencies
 ```
 
+# Authentication System
+
+Hybrid authentication using Supabase Auth + local PostgreSQL.
+
+## Quick Start
+
+### Backend Setup
+
+```bash
+# Environment variables
+DATABASE_URL=postgresql://postgres.[ref]:[pwd]@[host]:5432/postgres
+SUPABASE_URL=https://[project-ref].supabase.co
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_KEY=eyJ...
+COOKIE_SECURE=true
+COOKIE_SAMESITE=lax
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
+
+### Frontend Setup
+
+```bash
+# .env.local
+NEXT_PUBLIC_API_URL=http://localhost:8010/api/v1
+```
+
+## Architecture
+
+- **Supabase:** Password hashing, JWT tokens, OAuth
+- **Backend:** User data, authorization, business logic
+- **Frontend:** Cookie-based auth (HttpOnly + CSRF)
+
+## API Endpoints
+
+### Register
+
+```bash
+POST /api/v1/auth/register
+{
+  "email": "user@example.com",
+  "password": "secure123",
+  "first_name": "John",
+  "last_name": "Doe"
+}
+```
+
+### Login
+
+```bash
+POST /api/v1/auth/login
+{
+  "username": "user@example.com",
+  "password": "secure123"
+}
+```
+
+### Session
+
+```bash
+GET /api/v1/auth/session
+# Cookie: access_token
+```
+
+### Logout
+
+```bash
+POST /api/v1/auth/logout
+```
+
+### Refresh
+
+```bash
+POST /api/v1/auth/refresh
+{
+  "refresh_token": "eyJ..."
+}
+```
+
+## Usage
+
+### Protected Route
+
+```python
+from project.auth.dependencies import get_current_user
+
+@router.get("/profile")
+def get_profile(user: User = Depends(get_current_user)):
+    return {"email": user.email}
+```
+
+### Frontend Login
+
+```typescript
+const response = await api.auth.login({
+  username: email,
+  password,
+});
+// Cookies set automatically
+router.push("/dashboard");
+```
+
+## Security
+
+- ✅ HttpOnly cookies (XSS protection)
+- ✅ CSRF tokens for state changes
+- ✅ Secure + SameSite flags
+- ✅ JWT validation via Supabase
+- ✅ Token auto-refresh on 401
+
+## Testing
+
+```bash
+# Register
+curl -X POST http://localhost:8010/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "password": "secure123"}'
+
+# Login (saves cookies)
+curl -X POST http://localhost:8010/api/v1/auth/login \
+  -c cookies.txt \
+  -d '{"username": "test@example.com", "password": "secure123"}'
+
+# Protected endpoint
+curl http://localhost:8010/api/v1/users/profile -b cookies.txt
+```
+
+## Database Trigger (Optional)
+
+Auto-sync Supabase users:
+
+```sql
+CREATE FUNCTION handle_new_user() RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.users (id, email, is_active)
+  VALUES (NEW.id, NEW.email, true)
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+```
+
+## Troubleshooting
+
+**Invalid token:** Check `SUPABASE_SERVICE_KEY` is set correctly
+
+**User not found:** Login auto-creates users from Supabase
+
+**CORS issues:** Set `COOKIE_DOMAIN` and `credentials: 'include'`
+
+**Token refresh fails:** Verify `/auth/refresh` endpoint and refresh token storage
+
+## Production Checklist
+
+- [ ] Enable HTTPS (`COOKIE_SECURE=true`)
+- [ ] Set correct `COOKIE_DOMAIN`
+- [ ] Use short token expiry (15-30 min)
+- [ ] Enable email verification in Supabase
+- [ ] Rate limit auth endpoints
+- [ ] Monitor auth logs
+- [ ] Never expose `SUPABASE_SERVICE_KEY` to frontend
+
 ## Core Components
 
 ### 1. FastAPI Application (`project/__init__.py`)
