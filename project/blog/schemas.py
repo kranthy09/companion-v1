@@ -240,5 +240,11 @@ class BlogStreamChunk(BaseModel):
 
 class BlogGenerateRequest(BaseModel):
     """Request schema for blog generation"""
+
     blog_id: int
     enhancement_type: str = "improve"  # improve, expand, summarize
+
+
+class BlogCreateStreamRequest(BaseModel):
+    title: str
+    content: str

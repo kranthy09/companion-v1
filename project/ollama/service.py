@@ -1,27 +1,27 @@
 """
-companion/project/ollama/service.py
+project/ollama/service.py
 
-Ollama service with improved prompts and error handling
+Generic Ollama service for background processing tasks
 """
 
 import httpx
 import logging
-from typing import Dict
+from typing import Dict, Optional, AsyncGenerator
 from project.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class OllamaService:
+    """Generic Ollama LLM service for any task"""
+
     def __init__(self):
         self.base_url = settings.OLLAMA_BASE_URL
         self.model = settings.OLLAMA_MODEL
         self.timeout = 300.0
-        self.max_content_length = 50000  # 50k char limit
-        self.max_title_length = 500
 
     async def health_check(self) -> bool:
-        """Check if Ollama is available"""
+        """Check Ollama availability"""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f"{self.base_url}/api/tags")
@@ -30,160 +30,91 @@ class OllamaService:
             logger.error(f"Ollama health check failed: {e}")
             return False
 
-    async def generate(self, prompt: str, temperature: float) -> Dict:
-        """Generate text from prompt"""
+    async def generate(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> Dict:
+        """
+        Generate text from prompt (non-streaming)
+
+        Args:
+            prompt: Input prompt
+            model: Model name (defaults to configured model)
+            temperature: Generation temperature (0.0-1.0)
+            max_tokens: Max tokens to generate
+
+        Returns:
+            Dict with 'response' key containing generated text
+        """
         url = f"{self.base_url}/api/generate"
 
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "prompt": prompt,
             "stream": False,
             "options": {"temperature": temperature},
         }
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            return response.json()
-
-    async def enhance_note(
-        self, title: str, content: str, enhancement_type: str = "summary"
-    ) -> Dict:
-        """Enhance note content with validation"""
-
-        # Input validation
-        if not title or not content:
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": "Title and content are required",
-            }
-
-        if len(title) > self.max_title_length:
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": f"Title exceeds {self.max_title_length} characters",
-            }
-
-        if len(content) > self.max_content_length:
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": f"Content exceeds \
-                    {self.max_content_length} characters",
-            }
-
-        # Sanitize inputs
-        title = title.strip()
-        content = content.strip()
-
-        prompts = {
-            "summary": f"""Create a concise 2-3 sentence summary of this note:
-
-Title: {title}
-
-Content:
-{content}
-
-Summary:""",
-            "improve": f"""Improve and expand this note
-              with better writing quality, more details, and clarity:
-
-Title: {title}
-
-Original Content:
-{content}
-
-Enhanced Version:""",
-            "outline": f"""Create a structured outline from this note:
-
-Title: {title}
-
-Content:
-{content}
-
-Outline:""",
-            "key_points": f"""Extract the key points from this note:
-
-Title: {title}
-
-Content:
-{content}
-
-Key Points:""",
-        }
-
-        prompt = prompts.get(enhancement_type, prompts["summary"])
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
 
         try:
-            # Check Ollama availability first
-            if not await self.health_check():
-                return {
-                    "enhanced_content": "",
-                    "success": False,
-                    "error": "Ollama service is currently unavailable",
-                }
-
-            result = await self.generate(prompt)
-
-            # Validate response
-            enhanced_content = result.get("response", "").strip()
-
-            if not enhanced_content:
-                return {
-                    "enhanced_content": "",
-                    "success": False,
-                    "error": "No content generated",
-                }
-
-            # Log success metrics
-            logger.info(
-                f"Successfully enhanced note: type={enhancement_type}, "
-                f"original_length={len(content)}, "
-                f"enhanced_length={len(enhanced_content)}"
-            )
-
-            return {
-                "enhanced_content": enhanced_content,
-                "success": True,
-                "metadata": {
-                    "type": enhancement_type,
-                    "original_length": len(content),
-                    "enhanced_length": len(enhanced_content),
-                    "compression_ratio": round(
-                        len(enhanced_content) / len(content), 2
-                    ),
-                },
-            }
-
-        except httpx.TimeoutException:
-            logger.error(
-                f"Ollama \
-                      request timeout for enhancement type: {enhancement_type}"
-            )
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": "Request timeout - content may be too long",
-            }
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Ollama HTTP \
-                    error: {e.response.status_code} - {e.response.text}"
-            )
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": f"Service error: {e.response.status_code}",
-            }
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                return response.json()
         except Exception as e:
-            logger.error(f"Enhancement failed: {e}")
-            return {
-                "enhanced_content": "",
-                "success": False,
-                "error": f"Enhancement failed: {str(e)}",
-            }
+            logger.error(f"Ollama generate failed: {e}")
+            raise
+
+    async def stream_generate(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+    ) -> AsyncGenerator[Dict, None]:
+        """
+        Generate text with streaming (for SSE)
+
+        Args:
+            prompt: Input prompt
+            model: Model name
+            temperature: Generation temperature
+            max_tokens: Max tokens to generate
+
+        Yields:
+            Dict chunks with 'response' and 'done' keys
+        """
+        url = f"{self.base_url}/api/generate"
+
+        payload = {
+            "model": model or self.model,
+            "prompt": prompt,
+            "stream": True,
+            "options": {"temperature": temperature},
+        }
+
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                async with client.stream(
+                    "POST", url, json=payload
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.strip():
+                            import json
+
+                            yield json.loads(line)
+        except Exception as e:
+            logger.error(f"Ollama stream failed: {e}")
+            raise
 
 
 ollama_service = OllamaService()

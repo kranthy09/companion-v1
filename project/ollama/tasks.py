@@ -12,16 +12,15 @@ from uuid import UUID
 
 from project.database import db_context
 from project.notes.models import (
-    Note,
     Question,
     Quiz,
     QuizQuestion,
 )
+from project.blog.models import BlogSection
+
 from project.notes.service import NoteService
 from project.notes.schemas import QuizQuestionData, QuizGenerationResult
 from project.ollama.service import ollama_service
-from project.ollama.streaming import streaming_service
-from project import broadcast
 
 logger = get_task_logger(__name__)
 
@@ -70,57 +69,16 @@ def task_failure_handler(task_id, exception, traceback, **extra):
         service.update_task_status(task_id, "failed", error=str(exception))
 
 
-@shared_task(bind=True, max_retries=3)
-def task_enhance_note(self, note_id: int, user_id: UUID):
-    """Enhance note (background task)"""
-    try:
-        with db_context() as session:
-            note = (
-                session.query(Note)
-                .filter(Note.id == note_id, Note.user_id == user_id)
-                .first()
-            )
-
-            if not note:
-                raise ValueError("Note not found")
-
-            # Check Ollama availability
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            available = loop.run_until_complete(ollama_service.health_check())
-            if not available:
-                raise Exception("Ollama service unavailable")
-
-            result = loop.run_until_complete(
-                ollama_service.enhance_note(
-                    note.title, note.content, "improve"
-                )
-            )
-            loop.close()
-
-            if not result["success"]:
-                raise Exception(result.get("error", "Enhancement failed"))
-
-            note.ai_enhanced_content = result["enhanced_content"]
-            note.has_ai_enhancement = True
-            session.commit()
-
-            return {
-                "note_id": note_id,
-                "success": True,
-                "type": "enhance",
-                "content_length": len(result["enhanced_content"]),
-            }
-
-    except Exception as e:
-        logger.error(f"Enhancement failed: {e}")
-        raise self.retry(exc=e, countdown=60)
-
-
 @shared_task(bind=True)
 def task_stream_enhance_note(self, note_id: int, user_id: UUID):
     """Track streaming enhancement task"""
+    self.update_state(state="STARTED", meta={"note_id": note_id})
+    # Actual work done in streaming endpoint
+    return {"note_id": note_id, "status": "streaming"}
+
+
+def task_stream_summarize_note(self, note_id: int, user_id: UUID):
+    """Track streaming summary task"""
     self.update_state(state="STARTED", meta={"note_id": note_id})
     # Actual work done in streaming endpoint
     return {"note_id": note_id, "status": "streaming"}
@@ -171,70 +129,6 @@ def task_save_summary(note_id: int, content: str):
         session.add(summary)
         session.commit()
         return {"summary_id": summary.id}
-
-
-@shared_task(bind=True, max_retries=3)
-def task_stream_summarize_note(self, note_id: int, user_id: UUID):
-    """Summarize note WITH streaming"""
-    task_id = self.request.id
-
-    try:
-        with db_context() as session:
-            note = (
-                session.query(Note)
-                .filter(Note.id == note_id, Note.user_id == user_id)
-                .first()
-            )
-
-            if not note:
-                raise ValueError("Note not found")
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            full_text = ""
-
-            async def stream_and_publish():
-                nonlocal full_text
-                await broadcast.connect()
-
-                async for chunk in streaming_service.stream_content(
-                    note.title, note.content, "summary"
-                ):
-                    full_text += chunk
-                    await broadcast.publish(
-                        channel=f"stream:{task_id}",
-                        message=json.dumps(
-                            {"type": "chunk", "data": chunk, "done": False}
-                        ),
-                    )
-
-                await broadcast.publish(
-                    channel=f"stream:{task_id}",
-                    message=json.dumps(
-                        {"type": "complete", "data": full_text, "done": True}
-                    ),
-                )
-
-                await broadcast.disconnect()
-
-            loop.run_until_complete(stream_and_publish())
-            loop.close()
-
-            # Save to DB
-            note.ai_summary = full_text
-            note.has_ai_summary = True
-            session.commit()
-
-            return {
-                "note_id": note_id,
-                "success": True,
-                "summary_length": len(full_text),
-            }
-
-    except Exception as e:
-        logger.error(f"Stream summary failed: {e}")
-        raise self.retry(exc=e, countdown=60)
 
 
 @shared_task
@@ -351,3 +245,69 @@ Be minimalistic Yet powerful on generating valid JSON."""
     except Exception as e:
         logger.error(f"Quiz generation failed: {e}")
         return {"error": str(e)}
+
+
+@shared_task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_kwargs={"max_retries": 3},
+)
+def task_save_blog_sections(self, post_id: int, h: str, d: str):
+    """Save AI sections"""
+    with db_context() as session:
+        session.add(
+            BlogSection(
+                post_id=post_id,
+                title="heading",
+                content=h,
+                section_type="text",
+                order_index=0,
+            )
+        )
+        session.add(
+            BlogSection(
+                post_id=post_id,
+                title="description",
+                content=d,
+                section_type="text",
+                order_index=1,
+            )
+        )
+        session.commit()
+        return {"success": True, "post_id": post_id}
+
+
+@shared_task(
+    bind=True, autoretry_for=(Exception,), retry_kwargs={"max_retries": 3}
+)
+def task_save_blog_sections_full(self, post_id: int, h: str, d: str, m: str):
+    with db_context() as session:
+        session.add(
+            BlogSection(
+                post_id=post_id,
+                title="heading",
+                content=h,
+                section_type="text",
+                order_index=0,
+            )
+        )
+        session.add(
+            BlogSection(
+                post_id=post_id,
+                title="description",
+                content=d,
+                section_type="text",
+                order_index=1,
+            )
+        )
+        session.add(
+            BlogSection(
+                post_id=post_id,
+                title="main",
+                content=m,
+                section_type="text",
+                order_index=2,
+            )
+        )
+        session.commit()
+        return {"success": True, "post_id": post_id}

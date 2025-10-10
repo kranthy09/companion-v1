@@ -6,4 +6,4 @@ from fastapi import APIRouter
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-from . import views, models, utils  # noqa
+from . import views, models  # noqa
