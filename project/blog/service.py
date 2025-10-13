@@ -1,105 +1,156 @@
-"""
-project/blog/service.py
-
-Blog service layer with business logic
-"""
-
+# project/blog/service.py
 import logging
-from typing import List, Optional, Tuple
+from typing import Optional
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, desc, asc, func
 from datetime import datetime, timezone
+from slugify import slugify
 
-from project.blog.models import (
-    BlogPost,
-    BlogCategory,
-    BlogComment,
-    BlogSection,
-)
-from project.blog.schemas import (
-    BlogPostCreate,
-    BlogPostUpdate,
-    BlogQueryParams,
-    BlogStatus,
-)
-from uuid import UUID
+from project.blog.models import BlogPost, BlogSection
+from project.blog.parser import BlogContentParser
 
 logger = logging.getLogger(__name__)
 
 
 class BlogService:
-    """Service class for blog operations"""
-
     def __init__(self, db: Session):
         self.db = db
+        self.parser = BlogContentParser()
 
-    def create_post(
-        self, user_id: UUID, post_data: BlogPostCreate
+    def create_initial_post(
+        self, user_id: int, title: str, original_content: str
     ) -> BlogPost:
-        """Create a new blog post with sections"""
+        """Create empty post before streaming"""
         try:
-            # Calculate read time
-            word_count = len(post_data.content.split())
-            read_time = max(1, word_count // 200)
-
-            # Create post
             post = BlogPost(
                 author_id=user_id,
-                title=post_data.title,
-                slug=post_data.slug or self._generate_slug(post_data.title),
-                excerpt=post_data.excerpt,
-                content=post_data.content,
-                featured_image=post_data.featured_image,
-                category_id=post_data.category_id,
-                tags=post_data.tags,
-                meta_description=post_data.meta_description,
-                meta_keywords=post_data.meta_keywords,
-                status=post_data.status,
-                is_featured=post_data.is_featured,
-                is_commentable=post_data.is_commentable,
-                read_time_minutes=read_time,
+                title=title,
+                slug=self._generate_slug(title),
+                excerpt=None,
+                content="",
+                status="draft",
+                generation_status="generating",
+                is_featured=False,
+                is_commentable=True,
+                view_count=0,
+                read_time_minutes=0,
+                raw_response={"original_prompt": original_content},
+                tags=[],
+                meta_keywords=[],
             )
 
-            # Set published_at if publishing
-            post_data.status = BlogStatus.PUBLISHED
-            post.published_at = datetime.now(timezone.utc)
-
             self.db.add(post)
-            self.db.flush()  # Get post ID before adding sections
-
-            # Add sections if provided
-            if post_data.sections:
-                for idx, section_data in enumerate(post_data.sections):
-                    section = BlogSection(
-                        post_id=post.id,
-                        title=section_data.title,
-                        content=section_data.content,
-                        section_type=section_data.section_type,
-                        metadata=section_data.jsonmeta,
-                        order=section_data.order or idx,
-                    )
-                    self.db.add(section)
-
             self.db.commit()
             self.db.refresh(post)
             return post
-
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Failed to create post: {e}")
+            logger.error(f"Failed to create initial post: {e}")
             raise
+
+    def save_generated_content(
+        self, post_id: int, generated_text: str
+    ) -> None:
+        """Save generated text and parse into sections"""
+        try:
+            post = (
+                self.db.query(BlogPost).filter(BlogPost.id == post_id).first()
+            )
+            if not post:
+                raise ValueError("Post not found")
+
+            # Parse sections
+            parsed_sections = self.parser.parse(generated_text)
+            excerpt = self.parser.extract_excerpt(generated_text)
+            word_count = len(generated_text.split())
+            read_time = max(1, word_count // 200)
+
+            # Update post
+            post.content = generated_text
+            post.excerpt = excerpt
+            post.read_time_minutes = read_time
+
+            # Create sections
+            for idx, section_data in enumerate(parsed_sections):
+                section = BlogSection(
+                    post_id=post.id,
+                    title=section_data["title"],
+                    content=section_data["content"],
+                    section_type=section_data["type"],
+                    order=idx,
+                    meta_info={},
+                )
+                self.db.add(section)
+
+            self.db.commit()
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Failed to save content: {e}")
+            raise
+
+    def mark_complete(self, post_id: int, user_id: int) -> BlogPost:
+        """Mark generation as complete"""
+        # Fetch post with sections eagerly loaded
+        post = (
+            self.db.query(BlogPost)
+            .options(joinedload(BlogPost.sections))
+            .filter(
+                BlogPost.id == post_id,
+                BlogPost.author_id == user_id,
+            )
+            .first()
+        )
+        if not post:
+            raise ValueError("Post not found")
+
+        if post.author_id != user_id:
+            raise ValueError("Not authorized")
+
+        post.generation_status = "complete"
+        post.updated_at = datetime.now(timezone.utc)
+
+        self.db.commit()
+        self.db.refresh(post)
+        return post
+
+    def mark_failed(self, post_id: int) -> None:
+        """Mark generation as failed"""
+        try:
+            post = (
+                self.db.query(BlogPost).filter(BlogPost.id == post_id).first()
+            )
+            if post:
+                post.generation_status = "failed"
+                self.db.commit()
+        except Exception as e:
+            logger.error(f"Failed to mark as failed: {e}")
+
+    def publish_post(self, post_id: int, user_id: int) -> BlogPost:
+        """Publish post"""
+        post = self.get_post_by_id(post_id)
+
+        if not post:
+            raise ValueError("Post not found")
+
+        if post.author_id != user_id:
+            raise ValueError("Not authorized")
+
+        post.status = "published"
+        post.published_at = datetime.now(timezone.utc)
+        post.updated_at = datetime.now(timezone.utc)
+
+        self.db.commit()
+        self.db.refresh(post)
+        return post
 
     def get_post_by_id(
         self, post_id: int, increment_view: bool = False
     ) -> Optional[BlogPost]:
-        """Get a specific post by ID"""
+        """Fetch post with sections"""
         post = (
             self.db.query(BlogPost)
             .options(
                 joinedload(BlogPost.author),
-                joinedload(BlogPost.category),
                 joinedload(BlogPost.sections),
-                joinedload(BlogPost.comments),
             )
             .filter(BlogPost.id == post_id)
             .first()
@@ -111,162 +162,42 @@ class BlogService:
 
         return post
 
-    def get_post_by_slug(
-        self, slug: str, increment_view: bool = False
-    ) -> Optional[BlogPost]:
-        """Get a specific post by slug"""
-        post = (
-            self.db.query(BlogPost)
-            .options(
-                joinedload(BlogPost.author),
-                joinedload(BlogPost.category),
-                joinedload(BlogPost.sections),
-            )
-            .filter(BlogPost.slug == slug)
-            .first()
-        )
+    def update_post(self, post_id: int, user_id: int, **updates) -> BlogPost:
+        """Update post fields"""
+        post = self.get_post_by_id(post_id)
 
-        if post and increment_view:
-            post.view_count += 1
-            self.db.commit()
+        if not post:
+            raise ValueError("Post not found")
 
+        if post.author_id != user_id:
+            raise ValueError("Not authorized")
+
+        for key, value in updates.items():
+            if hasattr(post, key) and value is not None:
+                setattr(post, key, value)
+
+        post.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(post)
         return post
 
-    def get_posts(
-        self, query_params: BlogQueryParams
-    ) -> Tuple[List[BlogPost], int]:
-        """Get paginated posts with filters"""
-        query = self.db.query(BlogPost).options(
-            joinedload(BlogPost.author), joinedload(BlogPost.category)
-        )
-
-        # Apply filters
-        if query_params.search:
-            search_term = f"%{query_params.search}%"
-            query = query.filter(
-                or_(
-                    BlogPost.title.ilike(search_term),
-                    BlogPost.content.ilike(search_term),
-                    BlogPost.excerpt.ilike(search_term),
-                )
-            )
-
-        if query_params.category_id:
-            query = query.filter(
-                BlogPost.category_id == query_params.category_id
-            )
-
-        if query_params.tags:
-            # Filter posts that have any of the specified tags
-            for tag in query_params.tags:
-                query = query.filter(BlogPost.tags.contains([tag]))
-
-        if query_params.status:
-            query = query.filter(BlogPost.status == query_params.status)
-
-        if query_params.author_id:
-            query = query.filter(BlogPost.author_id == query_params.author_id)
-
-        if query_params.is_featured is not None:
-            query = query.filter(
-                BlogPost.is_featured == query_params.is_featured
-            )
-
-        # Get total count
-        total = query.count()
-
-        # Apply sorting
-        sort_column = getattr(BlogPost, query_params.sort_by, None)
-        if sort_column:
-            if query_params.sort_order == "desc":
-                query = query.order_by(desc(sort_column))
-            else:
-                query = query.order_by(asc(sort_column))
-
-        # Apply pagination
-        offset = (query_params.page - 1) * query_params.page_size
-        posts = query.offset(offset).limit(query_params.page_size).all()
-
-        return posts, total
-
-    def update_post(
-        self, post_id: int, user_id: UUID, update_data: BlogPostUpdate
-    ) -> Optional[BlogPost]:
-        """Update an existing post"""
+    def delete_post(self, post_id: int, user_id: int) -> None:
+        """Delete post and sections"""
         post = self.get_post_by_id(post_id)
 
         if not post:
-            return None
+            raise ValueError("Post not found")
 
-        # Check ownership
         if post.author_id != user_id:
-            raise PermissionError("Not authorized to update this post")
+            raise ValueError("Not authorized")
 
-        try:
-            # Update fields
-            update_dict = update_data.model_dump(exclude_unset=True)
-
-            for field, value in update_dict.items():
-                setattr(post, field, value)
-
-            # Update read time if content changed
-            if "content" in update_dict:
-                post.read_time_minutes = post.calculate_read_time()
-
-            # Update published_at if status changed to published
-            if (
-                "status" in update_dict
-                and update_dict["status"] == BlogStatus.PUBLISHED
-                and not post.published_at
-            ):
-                post.published_at = datetime.now(timezone.utc)
-
-            post.updated_at = datetime.now(timezone.utc)
-
-            self.db.commit()
-            self.db.refresh(post)
-            return post
-
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to update post: {e}")
-            raise
-
-    def delete_post(self, post_id: int, user_id: UUID) -> bool:
-        """Delete a post (soft delete by archiving)"""
-        post = self.get_post_by_id(post_id)
-
-        if not post:
-            return False
-
-        # Check ownership
-        if post.author_id != user_id:
-            raise PermissionError("Not authorized to delete this post")
-
-        try:
-            # Soft delete by archiving
-            post.status = BlogStatus.ARCHIVED
-            post.updated_at = datetime.now(timezone.utc)
-
-            self.db.commit()
-            return True
-
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to delete post: {e}")
-            raise
+        self.db.delete(post)
+        self.db.commit()
 
     def _generate_slug(self, title: str) -> str:
-        """Generate unique slug from title"""
-        import re
-
-        # Basic slug generation
-        slug = title.lower().strip()
-        slug = re.sub(r"[^\w\s-]", "", slug)
-        slug = re.sub(r"[-\s]+", "-", slug)
-
-        # Ensure uniqueness
-        base_slug = slug[:200]
+        """Generate unique slug"""
+        base_slug = slugify(title)
+        slug = base_slug
         counter = 1
 
         while self.db.query(BlogPost).filter(BlogPost.slug == slug).first():
@@ -274,54 +205,3 @@ class BlogService:
             counter += 1
 
         return slug
-
-    # Category operations
-    def get_categories(self) -> List[BlogCategory]:
-        """Get all categories with post counts"""
-        categories = (
-            self.db.query(
-                BlogCategory, func.count(BlogPost.id).label("posts_count")
-            )
-            .outerjoin(BlogPost)
-            .group_by(BlogCategory.id)
-            .all()
-        )
-
-        return categories
-
-    # Comment operations
-    def add_comment(
-        self,
-        post_id: int,
-        user_id: UUID,
-        content: str,
-        parent_id: Optional[int] = None,
-    ) -> BlogComment:
-        """Add a comment to a post"""
-        post = self.get_post_by_id(post_id)
-
-        if not post:
-            raise ValueError("Post not found")
-
-        if not post.is_commentable:
-            raise ValueError("Comments are disabled for this post")
-
-        try:
-            comment = BlogComment(
-                post_id=post_id,
-                user_id=user_id,
-                content=content,
-                parent_id=parent_id,
-                is_approved=True,  # Auto-approve for now
-            )
-
-            self.db.add(comment)
-            self.db.commit()
-            self.db.refresh(comment)
-
-            return comment
-
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Failed to add comment: {e}")
-            raise

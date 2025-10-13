@@ -9,3 +9,6 @@ project/__pycache__/*
 .env/.dev
 .env/.dev-sample
 cookies.txt
+celerybeat-schedule
+chunks.txt
+.pytest_cache/
