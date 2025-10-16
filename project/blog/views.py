@@ -51,6 +51,7 @@ async def stream_blog_generation(
 
             # Save generated text and parse sections
             service.save_generated_content(post.id, full_text)
+            print("save_generate: ", full_text)
 
             yield f"event: complete\ndata: {post.id}\n\n"
 

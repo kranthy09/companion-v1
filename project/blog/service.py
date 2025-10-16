@@ -59,16 +59,10 @@ class BlogService:
                 raise ValueError("Post not found")
 
             # Parse sections
-            parsed_sections = self.parser.parse(generated_text)
-            excerpt = self.parser.extract_excerpt(generated_text)
-            word_count = len(generated_text.split())
-            read_time = max(1, word_count // 200)
-
-            # Update post
-            post.content = generated_text
-            post.excerpt = excerpt
-            post.read_time_minutes = read_time
-
+            parsed = BlogContentParser.parse(generated_text)
+            post.title = parsed["title"]
+            post.excerpt = parsed["excerpt"]
+            parsed_sections = parsed["sections"]
             # Create sections
             for idx, section_data in enumerate(parsed_sections):
                 section = BlogSection(
@@ -82,6 +76,7 @@ class BlogService:
                 self.db.add(section)
 
             self.db.commit()
+            self.db.refresh(post)
         except Exception as e:
             self.db.rollback()
             logger.error(f"Failed to save content: {e}")
