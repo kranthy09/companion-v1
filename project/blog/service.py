@@ -1,7 +1,8 @@
 # project/blog/service.py
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_
 from datetime import datetime, timezone
 from slugify import slugify
 
@@ -37,7 +38,6 @@ class BlogService:
                 tags=[],
                 meta_keywords=[],
             )
-
             self.db.add(post)
             self.db.commit()
             self.db.refresh(post)
@@ -53,18 +53,19 @@ class BlogService:
         """Save generated text and parse into sections"""
         try:
             post = (
-                self.db.query(BlogPost).filter(BlogPost.id == post_id).first()
+                self.db.query(BlogPost)
+                .filter(BlogPost.id == post_id)
+                .first()
             )
             if not post:
                 raise ValueError("Post not found")
 
-            # Parse sections
             parsed = BlogContentParser.parse(generated_text)
-            post.title = parsed["title"]
+            post.title = parsed["title"] or post.title
             post.excerpt = parsed["excerpt"]
-            parsed_sections = parsed["sections"]
-            # Create sections
-            for idx, section_data in enumerate(parsed_sections):
+            post.content = generated_text
+
+            for idx, section_data in enumerate(parsed["sections"]):
                 section = BlogSection(
                     post_id=post.id,
                     title=section_data["title"],
@@ -84,7 +85,6 @@ class BlogService:
 
     def mark_complete(self, post_id: int, user_id: int) -> BlogPost:
         """Mark generation as complete"""
-        # Fetch post with sections eagerly loaded
         post = (
             self.db.query(BlogPost)
             .options(joinedload(BlogPost.sections))
@@ -97,77 +97,88 @@ class BlogService:
         if not post:
             raise ValueError("Post not found")
 
-        if post.author_id != user_id:
-            raise ValueError("Not authorized")
-
         post.generation_status = "complete"
-        post.updated_at = datetime.now(timezone.utc)
-
+        post.read_time_minutes = self._calculate_read_time(post.content)
         self.db.commit()
         self.db.refresh(post)
         return post
 
     def mark_failed(self, post_id: int) -> None:
         """Mark generation as failed"""
-        try:
-            post = (
-                self.db.query(BlogPost).filter(BlogPost.id == post_id).first()
+        post = self.db.query(BlogPost).filter(
+            BlogPost.id == post_id
+        ).first()
+        if post:
+            post.generation_status = "failed"
+            self.db.commit()
+
+    def list_posts(
+        self,
+        user_id: int,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+    ) -> Dict[str, Any]:
+        """List posts with filtering, pagination, and sorting"""
+        query = self.db.query(BlogPost).filter(
+            BlogPost.author_id == user_id
+        )
+
+        if search:
+            search_filter = or_(
+                BlogPost.title.ilike(f"%{search}%"),
+                BlogPost.content.ilike(f"%{search}%"),
+                BlogPost.excerpt.ilike(f"%{search}%"),
             )
-            if post:
-                post.generation_status = "failed"
-                self.db.commit()
-        except Exception as e:
-            logger.error(f"Failed to mark as failed: {e}")
+            query = query.filter(search_filter)
 
-    def publish_post(self, post_id: int, user_id: int) -> BlogPost:
-        """Publish post"""
-        post = self.get_post_by_id(post_id)
+        if status:
+            query = query.filter(BlogPost.status == status)
 
-        if not post:
-            raise ValueError("Post not found")
+        total = query.count()
 
-        if post.author_id != user_id:
-            raise ValueError("Not authorized")
+        sort_col = getattr(BlogPost, sort_by, BlogPost.updated_at)
+        if sort_order == "desc":
+            query = query.order_by(sort_col.desc())
+        else:
+            query = query.order_by(sort_col.asc())
 
-        post.status = "published"
-        post.published_at = datetime.now(timezone.utc)
-        post.updated_at = datetime.now(timezone.utc)
+        offset = (page - 1) * page_size
+        posts = query.offset(offset).limit(page_size).all()
 
-        self.db.commit()
-        self.db.refresh(post)
-        return post
+        return {
+            "posts": posts,
+            "total_count": total,
+            "page": page,
+            "page_size": page_size,
+        }
 
     def get_post_by_id(
-        self, post_id: int, increment_view: bool = False
+        self, post_id: int, user_id: int
     ) -> Optional[BlogPost]:
-        """Fetch post with sections"""
-        post = (
+        """Get single post with sections"""
+        return (
             self.db.query(BlogPost)
-            .options(
-                joinedload(BlogPost.author),
-                joinedload(BlogPost.sections),
+            .options(joinedload(BlogPost.sections))
+            .filter(
+                BlogPost.id == post_id,
+                BlogPost.author_id == user_id,
             )
-            .filter(BlogPost.id == post_id)
             .first()
         )
 
-        if post and increment_view:
-            post.view_count += 1
-            self.db.commit()
-
-        return post
-
-    def update_post(self, post_id: int, user_id: int, **updates) -> BlogPost:
-        """Update post fields"""
-        post = self.get_post_by_id(post_id)
-
+    def update_post(
+        self, post_id: int, user_id: int, data: Dict[str, Any]
+    ) -> BlogPost:
+        """Update post"""
+        post = self.get_post_by_id(post_id, user_id)
         if not post:
             raise ValueError("Post not found")
 
-        if post.author_id != user_id:
-            raise ValueError("Not authorized")
-
-        for key, value in updates.items():
+        for key, value in data.items():
             if hasattr(post, key) and value is not None:
                 setattr(post, key, value)
 
@@ -177,26 +188,31 @@ class BlogService:
         return post
 
     def delete_post(self, post_id: int, user_id: int) -> None:
-        """Delete post and sections"""
-        post = self.get_post_by_id(post_id)
-
+        """Delete post"""
+        post = self.get_post_by_id(post_id, user_id)
         if not post:
             raise ValueError("Post not found")
-
-        if post.author_id != user_id:
-            raise ValueError("Not authorized")
 
         self.db.delete(post)
         self.db.commit()
 
     def _generate_slug(self, title: str) -> str:
-        """Generate unique slug"""
+        """Generate unique slug from title"""
         base_slug = slugify(title)
         slug = base_slug
         counter = 1
 
-        while self.db.query(BlogPost).filter(BlogPost.slug == slug).first():
+        while (
+            self.db.query(BlogPost)
+            .filter(BlogPost.slug == slug)
+            .first()
+        ):
             slug = f"{base_slug}-{counter}"
             counter += 1
 
         return slug
+
+    def _calculate_read_time(self, content: str) -> int:
+        """Calculate estimated read time in minutes"""
+        words = len(content.split())
+        return max(1, words // 200)

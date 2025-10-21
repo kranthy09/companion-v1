@@ -1,6 +1,8 @@
 # project/blog/views.py
+import json
 import logging
-from fastapi import Depends, HTTPException, status
+from typing import Optional
+from fastapi import Depends, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -10,14 +12,8 @@ from project.auth.dependencies import get_current_user
 from project.auth.models import User
 from project.blog.service import BlogService
 from project.blog.ollama_blog_service import ollama_blog_generator
-from project.blog.schemas import (
-    GenerateRequest,
-    PostResponse,
-    PostUpdate,
-    # SectionResponse
-)
+from project.blog.schemas import GenerateRequest, PostResponse, PostUpdate
 from project.schemas.response import APIResponse, success_response
-
 
 logger = logging.getLogger(__name__)
 
@@ -29,36 +25,31 @@ async def stream_blog_generation(
     db: Session = Depends(get_db_session),
 ):
     """Stream and auto-save blog content"""
-
-    # Create initial post before streaming
     service = BlogService(db)
     post = service.create_initial_post(
-        user_id=user.id, title=request.title, original_content=request.content
+        user_id=user.id,
+        title=request.title,
+        original_content=request.content,
     )
 
     async def event_stream():
         full_text = ""
         try:
-            # Send post_id first
-            yield f"event: created\ndata: {post.id}\n\n"
+            yield f"data: {json.dumps({'post_id': post.id})}\n\n"
 
-            # Stream content
             async for text_chunk in ollama_blog_generator.generate_stream(
                 title=request.title, content=request.content
             ):
                 full_text += text_chunk
-                yield f"data: {text_chunk}\n\n"
+                yield f"data: {json.dumps({'chunk': text_chunk})}\n\n"
 
-            # Save generated text and parse sections
             service.save_generated_content(post.id, full_text)
-            print("save_generate: ", full_text)
-
-            yield f"event: complete\ndata: {post.id}\n\n"
+            yield f"data: {json.dumps({'done': True, 'post_id': post.id})}\n\n"
 
         except Exception as e:
             logger.error(f"Stream error: {e}")
             service.mark_failed(post.id)
-            yield f"data: [ERROR] {str(e)}\n\n"
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -66,14 +57,11 @@ async def stream_blog_generation(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
         },
     )
 
 
-@blog_router.post(
-    "/posts/{post_id}/complete", response_model=APIResponse[PostResponse]
-)
+@blog_router.post("/posts/{post_id}/complete", response_model=APIResponse)
 def complete_generation(
     post_id: int,
     user: User = Depends(get_current_user),
@@ -83,7 +71,6 @@ def complete_generation(
     try:
         service = BlogService(db)
         post = service.mark_complete(post_id, user.id)
-        # print("get post: ", post.__dict__)
         post_response = PostResponse.model_validate(post)
         return success_response(
             data=post_response,
@@ -95,72 +82,134 @@ def complete_generation(
         )
 
 
-@blog_router.post("/posts/{post_id}/publish", response_model=PostResponse)
-def publish_post(
-    post_id: int,
+@blog_router.get("/posts", response_model=APIResponse)
+def list_blog_posts(
+    search: Optional[str] = Query(None, description="Search title/content"),
+    status_filter: Optional[str] = Query(
+        None, pattern="^(draft|published|archived)$", alias="status"
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort_by: str = Query(
+        "updated_at", pattern="^(created_at|updated_at|title)$"
+    ),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Publish post (change status to published)"""
+    """List blog posts with filtering and pagination"""
     try:
         service = BlogService(db)
-        post = service.publish_post(post_id, user.id)
-        return post
-    except ValueError as e:
+        result = service.list_posts(
+            user_id=user.id,
+            search=search,
+            status=status_filter,
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+
+        # Convert SQLAlchemy models to Pydantic schemas
+        posts_data = [
+            PostResponse.model_validate(post) for post in result["posts"]
+        ]
+
+        return success_response(
+            data={
+                "posts": posts_data,
+                "total_count": result["total_count"],
+                "page": result["page"],
+                "page_size": result["page_size"],
+            },
+            message="Posts retrieved successfully"
+        )
+    except Exception as e:
+        logger.error(f"List posts error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch posts",
         )
 
 
-@blog_router.get("/posts/{post_id}", response_model=APIResponse[PostResponse])
-def get_post(
+@blog_router.get("/posts/{post_id}", response_model=APIResponse)
+def get_blog_post(
     post_id: int,
-    increment_view: bool = False,
-    db: Session = Depends(get_db_session),
-):
-    """Get single post"""
-    service = BlogService(db)
-    post = service.get_post_by_id(post_id, increment_view)
-
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Post not found"
-        )
-    data = PostResponse.model_validate(post)
-
-    return success_response(data=data)
-
-
-@blog_router.patch("/posts/{post_id}", response_model=PostResponse)
-def update_post(
-    post_id: int,
-    update_data: PostUpdate,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Update post"""
+    """Get single blog post with sections"""
     try:
         service = BlogService(db)
-        update_dict = update_data.model_dump(exclude_unset=True)
-        post = service.update_post(post_id, user.id, **update_dict)
-        return post
-    except ValueError as e:
+        post = service.get_post_by_id(post_id, user.id)
+        if not post:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Post not found",
+            )
+        post_response = PostResponse.model_validate(post)
+        return success_response(
+            data=post_response, message="Post retrieved successfully"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get post error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch post",
         )
 
 
-@blog_router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(
+@blog_router.put("/posts/{post_id}", response_model=APIResponse)
+def update_blog_post(
+    post_id: int,
+    data: PostUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Update blog post"""
+    try:
+        service = BlogService(db)
+        post = service.update_post(
+            post_id, user.id, data.model_dump(exclude_unset=True)
+        )
+        post_response = PostResponse.model_validate(post)
+        return success_response(
+            data=post_response, message="Post updated successfully"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Update post error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update post",
+        )
+
+
+@blog_router.delete("/posts/{post_id}", response_model=APIResponse)
+def delete_blog_post(
     post_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Delete post"""
+    """Delete blog post"""
     try:
         service = BlogService(db)
         service.delete_post(post_id, user.id)
+        return success_response(
+            data={"deleted": True}, message="Post deleted successfully"
+        )
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(e)
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Delete post error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete post",
         )

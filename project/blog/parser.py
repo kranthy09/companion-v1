@@ -1,125 +1,118 @@
-# project/blog/parser.py
+"""
+project/blog/parser.py
+
+Minimalistic blog markdown parser with clean section extraction.
+"""
 import re
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 
 class BlogContentParser:
-    """
-    Advanced blog markdown parser.
-    Parses AI-generated blog content into structured sections:
-    title, excerpt, introduction, body sections, insights, and conclusion.
-    """
+    """Parse markdown blog content into structured sections."""
 
-    HEADER_RE = re.compile(r"^(#+)\s+(.+)$")
-    PRACTICAL_RE = re.compile(r"^\*\*Practical\s+(.+?):\*\*", re.IGNORECASE)
-    BULLET_RE = re.compile(r"^\s*[\*\-]\s+")
+    HEADER_RE = re.compile(r"^(#+)\s+(.+)$", re.MULTILINE)
 
     @staticmethod
     def parse(content: str) -> Dict[str, Optional[str]]:
         """
-        Parse the markdown blog content into a structured dictionary.
+        Parse markdown content into title, excerpt, and sections.
+
         Returns:
-        {
-          "title": str,
-          "excerpt": str,
-          "sections": [ {"title": str, "content": str, "type": str}, ... ]
-        }
+            {
+                "title": str | None,
+                "excerpt": str,
+                "sections": [
+                    {
+                        "title": str | None,
+                        "content": str,
+                        "type": "text"
+                    }
+                ]
+            }
         """
-        lines = [line.rstrip() for line in content.strip().split("\n")]
-        if not lines:
+        if not content or not content.strip():
             return {"title": None, "excerpt": "", "sections": []}
 
-        # 1️⃣ Extract top-level title (## or #)
-        title = None
-        if lines and lines[0].startswith("##"):
-            title = re.sub(r"^##+\s*", "", lines[0]).strip()
-            lines = lines[1:]
+        lines = content.strip().split("\n")
 
-        sections: List[Dict[str, str]] = []
-        current = {"title": None, "content": [], "type": "introduction"}
-        section_count = 0
+        # Extract main title (first ## or # heading)
+        title = BlogContentParser._extract_title(lines)
 
-        for line in lines:
-            # --- Detect headers ---
-            header_match = BlogContentParser.HEADER_RE.match(line)
-            if header_match:
-                level, header_text = header_match.groups()
-                level = len(level)
+        # Parse all sections
+        sections = BlogContentParser._parse_sections(content)
 
-                # Save previous section
-                BlogContentParser._save_section(current, sections)
-
-                # Determine type
-                section_type = "body"
-                if re.search(r"conclusion", header_text, re.IGNORECASE):
-                    section_type = "conclusion"
-                elif section_count == 0:
-                    section_type = "introduction"
-
-                section_count += 1
-                current = {
-                    "title": header_text.strip(),
-                    "content": [],
-                    "type": section_type,
-                }
-                continue
-
-            # --- Detect practical insights ---
-            if BlogContentParser.PRACTICAL_RE.match(line):
-                BlogContentParser._save_section(current, sections)
-                title_text = BlogContentParser.PRACTICAL_RE.match(
-                    line).group(1)
-                current = {
-                    "title": f"Practical {title_text.title()}",
-                    "content": [],
-                    "type": "insight",
-                }
-                continue
-
-            # --- Detect bullet lists ---
-            if BlogContentParser.BULLET_RE.match(line):
-                if current["type"] not in ("insight", "list"):
-                    BlogContentParser._save_section(current, sections)
-                    current = {
-                        "title": current.get("title") or "Key Insights",
-                        "content": [],
-                        "type": "insight",
-                    }
-
-            current["content"].append(line)
-
-        # Save the final section
-        BlogContentParser._save_section(current, sections)
-
-        # 2️⃣ Extract excerpt (first paragraph after title)
-        excerpt = BlogContentParser.extract_excerpt(content)
+        # Extract excerpt from first paragraph
+        excerpt = BlogContentParser._extract_excerpt(content)
 
         return {"title": title, "excerpt": excerpt, "sections": sections}
 
-    # ---------------------------------------------------------------------
     @staticmethod
-    def _save_section(current: Dict[str, any], sections: List[Dict[str, str]]):
-        """Utility to finalize and store a section."""
-        text = "\n".join(current.get("content", [])).strip()
-        if not text:
-            return
-        sections.append(
-            {
-                "title": current.get("title"),
-                "content": text,
-                "type": current.get("type", "body"),
-            }
-        )
+    def _extract_title(lines: List[str]) -> Optional[str]:
+        """Extract the first heading as the main title."""
+        for line in lines:
+            if line.strip().startswith("#"):
+                return re.sub(r"^#+\s*", "", line).strip()
+        return None
 
-    # ---------------------------------------------------------------------
     @staticmethod
-    def extract_excerpt(content: str, max_length: int = 250) -> str:
-        """Extract the first readable paragraph as an excerpt."""
-        clean = re.sub(r"^#+\s+", "", content, flags=re.MULTILINE)
+    def _parse_sections(content: str) -> List[Dict[str, Optional[str]]]:
+        """
+        Split content by headers and create sections.
+        Each section includes everything until the next header.
+        """
+        sections: List[Dict[str, Optional[str]]] = []
+
+        # Split by headers while preserving them
+        parts = BlogContentParser.HEADER_RE.split(content)
+
+        # First part (before any header) is intro if exists
+        intro = parts[0].strip()
+        if intro:
+            sections.append({
+                "title": None,
+                "content": intro,
+                "type": "text"
+            })
+
+        # Process header + content pairs
+        i = 1
+        while i < len(parts):
+            if i + 2 <= len(parts):
+                # parts[i] = header level (e.g., "##")
+                # parts[i+1] = header text
+                # parts[i+2] = content until next header
+                header_text = parts[i + 1].strip()
+                section_content = parts[i + 2].strip()
+
+                if section_content:  # Only add if content exists
+                    sections.append({
+                        "title": header_text,
+                        "content": section_content,
+                        "type": "text"
+                    })
+
+                i += 3
+            else:
+                break
+
+        return sections
+
+    @staticmethod
+    def _extract_excerpt(content: str, max_len: int = 250) -> str:
+        """Extract first paragraph as excerpt."""
+        # Remove all headers
+        clean = re.sub(r"^#+\s+.+$", "", content, flags=re.MULTILINE)
+
+        # Get first non-empty paragraph
         paragraphs = [p.strip() for p in clean.split("\n\n") if p.strip()]
+
         if not paragraphs:
             return ""
+
         excerpt = paragraphs[0]
-        if len(excerpt) > max_length:
-            excerpt = excerpt[:max_length].rsplit(" ", 1)[0] + "..."
+
+        # Truncate if too long
+        if len(excerpt) > max_len:
+            excerpt = excerpt[:max_len].rsplit(" ", 1)[0] + "..."
+
         return excerpt
