@@ -1,8 +1,4 @@
-"""
-companion/project/notes/schemas.py
-
-Updated Notes schemas with AI fields
-"""
+"""Notes schemas - Compatible with success_response"""
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import List, Optional, Dict
@@ -34,8 +30,8 @@ class NoteUpdate(BaseModel):
         return v.strip() if v else v
 
 
-# Response Schemas
-class NoteBase(BaseModel):
+# Response Schemas (Data only, no wrapper)
+class NoteResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -48,13 +44,7 @@ class NoteBase(BaseModel):
     updated_at: datetime
 
 
-class NoteResponse(BaseModel):
-    success: bool
-    data: NoteBase
-    message: str
-
-
-class NoteStatsBase(BaseModel):
+class NoteStatsResponse(BaseModel):
     total_notes: int
     total_words: int
     content_types: dict
@@ -62,34 +52,7 @@ class NoteStatsBase(BaseModel):
     tags_count: int
 
 
-class NoteStatsResponse(BaseModel):
-    success: bool = True
-    data: NoteStatsBase
-    message: Optional[str] = None
-
-
-class NotesListResponse(BaseModel):
-    success: bool = True
-    data: List[NoteBase]
-    total_count: int
-    page: int = 1
-    page_size: int = 20
-    message: Optional[str] = None
-
-
-class NoteDeleteResponse(BaseModel):
-    success: bool = True
-    message: str = "Note deleted successfully"
-
-
-# Error Response
-class ErrorResponse(BaseModel):
-    success: bool = False
-    error: str
-    detail: Optional[str] = None
-
-
-# Filter/Query Schemas
+# Query Params
 class NoteQueryParams(BaseModel):
     search: Optional[str] = None
     tags: Optional[List[str]] = None
@@ -143,7 +106,7 @@ class QuizResponse(BaseModel):
 
 class QuizAnswerSubmit(BaseModel):
     quiz_id: int
-    answers: Dict[int, str]  # question_id: selected_answer
+    answers: Dict[int, str]
 
 
 class QuizResultDetail(BaseModel):
@@ -172,7 +135,7 @@ class QuizResultResponse(BaseModel):
 class QuizQuestionData(BaseModel):
     question_id: int
     question: str
-    options: Dict[str, str]  # {"A": "opt", "B": "opt", ...}
+    options: Dict[str, str]
 
 
 class QuizGenerateResponse(BaseModel):
@@ -201,7 +164,7 @@ class QuizWithSubmission(BaseModel):
     id: int
     created_at: datetime
     questions: List[QuizQuestionWithSubmission]
-    submission: Optional[Dict] = None  # {score, total, submitted_at}
+    submission: Optional[Dict] = None
 
 
 class NoteSummaryResponse(BaseModel):

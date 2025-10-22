@@ -6,6 +6,7 @@ import logging
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import load_only
 
 from project.database import get_db_session
 from project.auth.models import User
@@ -56,9 +57,14 @@ async def get_current_user(
             )
 
         # Fetch from YOUR users table in same database
-        user = session.query(User).filter(
-            User.id == UUID(supabase_user.id)
-        ).first()
+        user = session.query(User).options(
+            load_only(
+                User.id,
+                User.email,
+                User.is_active,
+                User.is_verified
+            )
+        ).filter(User.id == UUID(supabase_user.id)).first()
 
         if not user:
             # Auto-create on first login

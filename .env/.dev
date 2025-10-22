@@ -1,33 +1,60 @@
+# Production-Optimized Environment Configuration
 
-ANTHROPIC_API_KEY=**
+ANTHROPIC_API_KEY=your_api_key_here
 FASTAPI_CONFIG=development
-# DATABASE_URL=postgresql://companion_user:companion_password_123@db/companion_db
-# DATABASE_URL=postgresql://postgres:companion-v1@db.dkgfykaqwupvlvntgvwg.supabase.co:5432/postgres
+
+# Database - Use connection pooler for production
 DATABASE_URL=postgresql://postgres.dkgfykaqwupvlvntgvwg:companion-v1@aws-1-us-east-1.pooler.supabase.com:5432/postgres
 DATABASE_TEST_URL=sqlite:///./test.db
-# Security - CHANGE THESE IN PRODUCTION
 
-SECRET_KEY=dev-secret-key-change-this-in-production-make-it-long-and-random
+# Security
+SECRET_KEY=change-this-to-long-random-string-in-production
 ACCESS_TOKEN_EXPIRE_MINUTES=129600
 REFRESH_TOKEN_EXPIRE_DAYS=129600
 
-# CORS Origins (comma-separated)
-
+# CORS
 CORS_ORIGINS=http://localhost:3000,http://localhost:8000,http://localhost:8010
 
-# Database Connection Pool
+# Database Connection Pool - OPTIMIZED
+DATABASE_POOL_SIZE=20  # Increased from 10
+DATABASE_MAX_OVERFLOW=40  # Increased from 20
+DATABASE_POOL_TIMEOUT=30
+DATABASE_POOL_RECYCLE=3600
+DATABASE_POOL_PRE_PING=true
 
-DATABASE_POOL_SIZE=10
-DATABASE_MAX_OVERFLOW=20
-
-# Celery/Redis
-
+# Celery/Redis - OPTIMIZED
 CELERY_BROKER_URL=redis://redis:6379/0
 CELERY_RESULT_BACKEND=redis://redis:6379/0
 WS_MESSAGE_QUEUE=redis://redis:6379/0
 
+# Celery Workers - OPTIMIZED
+CELERY_WORKER_CONCURRENCY=4  # CPU cores * 2
+CELERY_WORKER_PREFETCH_MULTIPLIER=4
+CELERY_WORKER_MAX_TASKS_PER_CHILD=1000
+
+# Ollama
 OLLAMA_BASE_URL=http://ollama:11434
 OLLAMA_MODEL=gemma2:2b
 
 # Cookie settings
 COOKIE_DOMAIN=localhost
+COOKIE_SECURE=false  # true in production
+COOKIE_SAMESITE=lax
+
+# Performance Monitoring
+SLOW_QUERY_THRESHOLD=1.0  # Log queries > 1 second
+SLOW_ENDPOINT_THRESHOLD=2.0  # Log endpoints > 2 seconds
+
+# Logging
+LOG_LEVEL=INFO  # DEBUG for development, INFO for production
+STRUCTURED_LOGGING=true
+
+# Rate Limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_DEFAULT=1000  # requests per hour
+RATE_LIMIT_LOGIN=5  # per 5 minutes
+RATE_LIMIT_REGISTER=3  # per hour
+
+# Query Timeout (milliseconds)
+STATEMENT_TIMEOUT=30000  # 30 seconds
+

@@ -1,94 +1,135 @@
-"""
-companion/project/celery_utils.py
+"""Production-optimized Celery configuration"""
 
-Utils for celery usage in the app
-"""
-
-import functools
-
-from celery.utils.time import get_exponential_backoff_interval
-from celery import current_app as current_celery_app, shared_task
-from celery.result import AsyncResult
-
+from celery import Celery, Task
+from celery.signals import task_prerun, task_postrun, task_failure
 from project.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def create_celery():
-    celery_app = current_celery_app
-    celery_app.config_from_object(settings, namespace="CELERY")
+class OptimizedTask(Task):
+    """Base task with connection pooling and retries"""
+
+    autoretry_for = (Exception,)
+    retry_kwargs = {'max_retries': 3, 'countdown': 5}
+    retry_backoff = True
+    retry_backoff_max = 600
+    retry_jitter = True
+
+    # Cleanup after task
+    def after_return(self, status, retval, task_id, args, kwargs, einfo):
+        """Clean up resources after task completes"""
+        # Close DB connections
+        from project.database import SessionLocal
+        SessionLocal.close_all()
+
+
+def create_celery() -> Celery:
+    """Create optimized Celery app"""
+
+    celery_app = Celery(
+        "project",
+        broker=settings.CELERY_BROKER_URL,
+        backend=settings.CELERY_RESULT_BACKEND,
+        task_cls=OptimizedTask
+    )
+
+    celery_app.conf.update(
+        # Task execution
+        task_serializer='json',
+        accept_content=['json'],
+        result_serializer='json',
+        timezone='UTC',
+        enable_utc=True,
+
+        # Performance
+        task_acks_late=True,  # Acknowledge after completion
+        worker_prefetch_multiplier=4,  # Prefetch for efficiency
+        worker_max_tasks_per_child=1000,  # Restart workers periodically
+
+        # Results
+        result_expires=3600,  # 1 hour
+        result_backend_transport_options={
+            'master_name': 'mymaster',
+            'socket_keepalive': True,
+            'retry_on_timeout': True,
+            'max_connections': 50
+        },
+
+        # Broker connection
+        broker_connection_retry_on_startup=True,
+        broker_connection_retry=True,
+        broker_connection_max_retries=10,
+        broker_pool_limit=50,
+
+        # Task routing
+        task_routes=settings.CELERY_TASK_ROUTES,
+        task_default_queue=settings.CELERY_TASK_DEFAULT_QUEUE,
+        task_queues=settings.CELERY_TASK_QUEUES,
+        task_create_missing_queues=settings.CELERY_TASK_CREATE_MISSING_QUEUES,
+
+        # Beat schedule
+        beat_schedule=settings.CELERY_BEAT_SCHEDULE,
+
+        # Logging
+        worker_redirect_stdouts=False,
+
+        # Task time limits
+        task_soft_time_limit=300,  # 5 minutes soft
+        task_time_limit=600,  # 10 minutes hard
+
+        # Optimization
+        task_compression='gzip',
+        result_compression='gzip',
+
+        # Monitoring
+        worker_send_task_events=True,
+        task_send_sent_event=True,
+    )
+
+    # Task autodiscovery
+    celery_app.autodiscover_tasks([
+        'project.users',
+        'project.notes',
+        'project.ollama',
+        'project.blog',
+        'project.tasks'
+    ])
 
     return celery_app
 
 
-def get_task_info(task_id):
-    """
-    return task info according to the task_id
-    """
-    task = AsyncResult(task_id)
-    state = task.state
+def get_task_info(task_id: str) -> dict:
+    """Get Celery task status and result"""
+    from celery.result import AsyncResult
 
-    if state == "FAILURE":
-        error = str(task.result)
-        response = {
-            "state": task.state,
-            "error": error,
-        }
-    elif state == "SUCCESS":
-        response = {
-            "state": task.state,
-            "result": task.result,
-        }
-    else:
-        response = {
-            "state": task.state,
-        }
-    return response
+    celery_app = create_celery()
+    result = AsyncResult(task_id, app=celery_app)
+
+    return {
+        "task_id": task_id,
+        "state": result.state,
+        "status": result.status,
+        "result": result.result if result.successful() else None,
+        "error": str(result.info) if result.failed() else None,
+    }
 
 
-class custom_celery_task:
+# Monitoring signals
+@task_prerun.connect
+def task_prerun_handler(task_id, task, *args, **kwargs):
+    """Log task start"""
+    logger.info(f"Task {task.name} [{task_id}] started")
 
-    EXCEPTION_BLOCK_LIST = (
-        IndexError,
-        KeyError,
-        TypeError,
-        UnicodeDecodeError,
-        ValueError,
-    )
 
-    def __init__(self, *args, **kwargs):
-        self.task_args = args
-        self.task_kwargs = kwargs
+@task_postrun.connect
+def task_postrun_handler(task_id, task, retval, *args, **kwargs):
+    """Log task completion"""
+    logger.info(f"Task {task.name} [{task_id}] completed")
 
-    def __call__(self, func):
-        @functools.wraps(func)
-        def wrapper_func(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except self.EXCEPTION_BLOCK_LIST:
-                # do not retry for those exceptions
-                raise
-            except Exception as e:
-                # here we add Exponential Backoff just like Celery
-                countdown = self._get_retry_countdown(task_func)
-                raise task_func.retry(exc=e, countdown=countdown)
 
-        task_func = shared_task(*self.task_args, **self.task_kwargs)(
-            wrapper_func
-        )
-        return task_func
-
-    def _get_retry_countdown(self, task_func):
-        retry_backoff = int(
-            max(1.0, float(self.task_kwargs.get("retry_backoff", True)))
-        )
-        retry_backoff_max = int(self.task_kwargs.get("retry_backoff_max", 600))
-        retry_jitter = self.task_kwargs.get("retry_jitter", True)
-
-        countdown = get_exponential_backoff_interval(
-            factor=retry_backoff,
-            retries=task_func.request.retries,
-            maximum=retry_backoff_max,
-            full_jitter=retry_jitter,
-        )
-
-        return countdown
+@task_failure.connect
+def task_failure_handler(task_id, exception, *args, **kwargs):
+    """Log task failure"""
+    logger.error(f"Task [{task_id}] failed: {exception}")
